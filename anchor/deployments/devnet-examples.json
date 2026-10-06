@@ -1,0 +1,57 @@
+{
+  "programId": "CMo46d7niK6id7f8vUR25zQjKr77ykvKoukDeUEKCXuh",
+  "recordedAt": "2026-10-06T17:47:06.444Z",
+  "steps": [
+    {
+      "step": "attest healthy",
+      "expect": "ok",
+      "ok": true,
+      "signature": "66mNtXhHj9umWHUWfoBj5WQSakESNnBdWR3dncXHstGrVzdBncFQxnGog5i4T7NqLT4WHn1PMjN6ce3K48EkLA4D",
+      "explorer": "https://explorer.solana.com/tx/66mNtXhHj9umWHUWfoBj5WQSakESNnBdWR3dncXHstGrVzdBncFQxnGog5i4T7NqLT4WHn1PMjN6ce3K48EkLA4D?cluster=devnet"
+    },
+    {
+      "step": "mint within backing",
+      "expect": "ok",
+      "ok": true,
+      "signature": "3cCa3TXL7tpQMrkx1AmLemkhcu4mWDbfzLaecfY8DcGyrbLeAGQDHoDFoxdV56vqf1M3uZb2Lk37h87FD8NBa9Z2",
+      "explorer": "https://explorer.solana.com/tx/3cCa3TXL7tpQMrkx1AmLemkhcu4mWDbfzLaecfY8DcGyrbLeAGQDHoDFoxdV56vqf1M3uZb2Lk37h87FD8NBa9Z2?cluster=devnet"
+    },
+    {
+      "step": "mint past the cap",
+      "expect": "ExceedsBacking",
+      "ok": false,
+      "errorCode": "ExceedsBacking",
+      "signature": "41CwQM4NYe76U5Yi3PuXrbYs4jAkEzE4vL3SiRNRqoHKCN9K1AVu8HL3DMfsHEoLE6yCYFG2ezVXTrYcZQXpMZc6",
+      "explorer": "https://explorer.solana.com/tx/41CwQM4NYe76U5Yi3PuXrbYs4jAkEzE4vL3SiRNRqoHKCN9K1AVu8HL3DMfsHEoLE6yCYFG2ezVXTrYcZQXpMZc6?cluster=devnet"
+    },
+    {
+      "step": "attest after drain",
+      "expect": "ok",
+      "ok": true,
+      "signature": "5hVo3N3UpneKVcnQhDKsbtDwJRWo6f3yiQ2TVWSwPeawTUm7xox6r8phS75nTsBSGetWnVRJWqJJrysFQQ6oYanZ",
+      "explorer": "https://explorer.solana.com/tx/5hVo3N3UpneKVcnQhDKsbtDwJRWo6f3yiQ2TVWSwPeawTUm7xox6r8phS75nTsBSGetWnVRJWqJJrysFQQ6oYanZ?cluster=devnet"
+    },
+    {
+      "step": "mint while auto-paused",
+      "expect": "AutoPaused",
+      "ok": false,
+      "errorCode": "AutoPaused",
+      "signature": "48E3B1fa1LgqRJB8dYUbDKWFVVvc4CM6uz12qnmG8T5yRt6axyNK3doCwSMc8jJLbhRC4rouZw46fkewincVwUeA",
+      "explorer": "https://explorer.solana.com/tx/48E3B1fa1LgqRJB8dYUbDKWFVVvc4CM6uz12qnmG8T5yRt6axyNK3doCwSMc8jJLbhRC4rouZw46fkewincVwUeA?cluster=devnet"
+    },
+    {
+      "step": "attest after top-up",
+      "expect": "ok",
+      "ok": true,
+      "signature": "3V82EYhdd4bGduGokJr2aQkEaxMso2P4T7qh2ErFDwAznFoghsNMSzCGteuVNFPHFfxoLcKiTYniFqjAyrJaJKuU",
+      "explorer": "https://explorer.solana.com/tx/3V82EYhdd4bGduGokJr2aQkEaxMso2P4T7qh2ErFDwAznFoghsNMSzCGteuVNFPHFfxoLcKiTYniFqjAyrJaJKuU?cluster=devnet"
+    },
+    {
+      "step": "mint after recovery",
+      "expect": "ok",
+      "ok": true,
+      "signature": "3PExKtvGEvAiouG7C4eoToDyStoRRBbEL9xfjX84KiSar2KvDZcXhQm9cjejV69VVT2HkbUaeprYDkV3JAHQUmnw",
+      "explorer": "https://explorer.solana.com/tx/3PExKtvGEvAiouG7C4eoToDyStoRRBbEL9xfjX84KiSar2KvDZcXhQm9cjejV69VVT2HkbUaeprYDkV3JAHQUmnw?cluster=devnet"
+    }
+  ]
+}

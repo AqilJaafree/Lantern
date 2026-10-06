@@ -1,0 +1,18 @@
+{
+  "cluster": "devnet",
+  "programId": "CMo46d7niK6id7f8vUR25zQjKr77ykvKoukDeUEKCXuh",
+  "mint": "7yupUQoWo5R7T6tvk7dCVjN4vXB94vSmSUHWeG5b4zM9",
+  "issuerConfig": "Vsf7QBUfHQSqnQG1wzdxVakRqsnCqFsSDeeAgHAG3fP",
+  "attestation": "DSezDRJyG6ZChmcpaig7fRhWjr3ehyoRmPWgQ9FS74wf",
+  "admin": "8sHRx1C6g5rprq3fWsVFHtMCfEfQQMuEmvQfMiDBUbEU",
+  "minter": "8sHRx1C6g5rprq3fWsVFHtMCfEfQQMuEmvQfMiDBUbEU",
+  "attestor": "Cgty5VNLqgVjuVbv5UL66j9bD2JakVpQGqMy3jhoAS2y",
+  "adminTokenAccount": "J9D2rDgeDiZv3Uck7W2Q1aYtT2uhp49VV41QRwSb7sqJ",
+  "stalenessSecs": 180,
+  "transactions": {
+    "createMint": "33LsvpL9XC3ondczSzJ6Nfm3z4gKXqziiPkTTZQCtffUGLq9NhuKaXtWMBoYvJ4HnU1JsMkvHMJdvPFv6EXLRXnq",
+    "initIssuer": "x629gJ5PLPinUkTnjY7KJeoDfwuo8Ak1aH8yWFG2vQqgK7LvVpSoHPdm7bsVctLPxzFBQx3uL17iFwv21Txq96J",
+    "firstAttestation": "3rrPMCb6jdRtenabb8JNFWYez8GoJTLKpyjTiCHSyW7hw1RTtZcLmK5AsfCZpVMMZBFP9pU6rczphjNVCwszpB39"
+  },
+  "createdAt": "2026-10-06T17:44:49.579Z"
+}
