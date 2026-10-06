@@ -7,6 +7,7 @@ skip-lint = false
 
 [programs.localnet]
 lantern = "CMo46d7niK6id7f8vUR25zQjKr77ykvKoukDeUEKCXuh"
+test_forwarder = "5VL6FGTXNPkuw94tSdtEMKsgH5k8T1ubwLQmnp9ja29X"
 
 [programs.devnet]
 lantern = "CMo46d7niK6id7f8vUR25zQjKr77ykvKoukDeUEKCXuh"

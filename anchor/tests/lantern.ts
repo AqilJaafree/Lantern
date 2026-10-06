@@ -19,13 +19,17 @@ import {
 } from "@solana/web3.js";
 import { expect } from "chai";
 import { Lantern } from "../target/types/lantern";
+import { TestForwarder } from "../target/types/test_forwarder";
 import {
   AttestationReport,
   CLUSTER_ID,
   attestationPda,
   backedMaxSupply,
+  creConfigPda,
+  forwarderAuthorityPda,
   issuerPda,
   signReportIx,
+  workflowMetadata,
 } from "../client/report";
 
 const SHARE = 1_000_000; // micro-shares per share; also raw units per token (6 decimals)
@@ -38,7 +42,9 @@ async function expectError(p: Promise<unknown>, code: string) {
   try {
     await p;
   } catch (e: any) {
-    const actual = e?.error?.errorCode?.code ?? String(e);
+    // Errors raised inside a CPI (on_report) only show up in the logs.
+    const actual =
+      e?.error?.errorCode?.code ?? [String(e), ...(e?.logs ?? e?.transactionLogs ?? [])].join("\n");
     expect(actual).to.include(code);
     return;
   }
@@ -324,6 +330,142 @@ describe("lantern", () => {
       await attest(report(shares(300), { splitNum: 2, splitDen: 1 }));
       await sleep((STALENESS_SECS + 4) * 1000);
       await expectError(mintGated(new BN(1)), "StaleAttestation");
+    });
+  });
+
+  describe("CRE on_report via the Keystone Forwarder", () => {
+    const forwarder = anchor.workspace.testForwarder as Program<TestForwarder>;
+    const fwdState = Keypair.generate();
+    const creConfig = creConfigPda(program.programId, issuer);
+    const authority = () =>
+      forwarderAuthorityPda(forwarder.programId, fwdState.publicKey, program.programId);
+
+    const WORKFLOW_NAME = Buffer.from("lantern-wf"); // 10 bytes
+    const WORKFLOW_OWNER = Buffer.alloc(20, 0xab);
+
+    const receiverAccounts = () => [
+      { pubkey: issuer, isSigner: false, isWritable: true },
+      { pubkey: creConfig, isSigner: false, isWritable: false },
+      { pubkey: attestation, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+    ];
+
+    const encode = (r: AttestationReport) =>
+      program.coder.types.encode("attestationReport", r);
+
+    function forward(r: AttestationReport, owner: Buffer = WORKFLOW_OWNER) {
+      return forwarder.methods
+        .forward(workflowMetadata(WORKFLOW_NAME, owner), encode(r))
+        .accountsPartial({
+          state: fwdState.publicKey,
+          forwarderAuthority: authority(),
+          receiver: program.programId,
+        })
+        .remainingAccounts(receiverAccounts())
+        .rpc();
+    }
+
+    before(async () => {
+      await forwarder.methods
+        .initState()
+        .accountsPartial({ payer: admin.publicKey, state: fwdState.publicKey })
+        .signers([fwdState])
+        .rpc();
+    });
+
+    function setCreConfig(signer: Keypair = admin) {
+      return program.methods
+        .setCreConfig({
+          forwarderProgram: forwarder.programId,
+          forwarderState: fwdState.publicKey,
+          workflowOwner: Array.from(WORKFLOW_OWNER),
+          workflowName: Array.from(WORKFLOW_NAME),
+        })
+        .accountsPartial({ admin: signer.publicKey, issuerConfig: issuer, creConfig })
+        .signers(signer === admin ? [] : [signer])
+        .rpc();
+    }
+
+    it("only the admin can set the CRE workflow", async () => {
+      await expectError(setCreConfig(minter), "Unauthorized");
+      await setCreConfig();
+      const cfg = await program.account.creConfig.fetch(creConfig);
+      expect(cfg.forwarderProgram.toBase58()).to.eq(forwarder.programId.toBase58());
+      expect(Buffer.from(cfg.workflowOwner).equals(WORKFLOW_OWNER)).to.eq(true);
+    });
+
+    it("accepts a report forwarded from the configured workflow and resumes minting", async () => {
+      const r = report(shares(300), { splitNum: 2, splitDen: 1 }); // cap 148
+      await forward(r);
+      nonce = r.nonce.toNumber();
+      lastObservedAt = r.observedAt.toNumber();
+
+      const a = await program.account.attestation.fetch(attestation);
+      expect(a.nonce.toNumber()).to.eq(nonce);
+      expect(a.maxSupply.toString()).to.eq(shares(148).toString());
+      await mintGated(shares(1)); // fresh again after the stale test
+    });
+
+    it("rejects a report from another workflow owner", async () => {
+      await expectError(
+        forward(report(shares(300), { splitNum: 2, splitDen: 1 }), Buffer.alloc(20, 0xcd)),
+        "UnauthorizedWorkflow"
+      );
+    });
+
+    it("applies the same checks as the relayer path (replayed nonce)", async () => {
+      await expectError(
+        forward(report(shares(300), { splitNum: 2, splitDen: 1, nonce: new BN(nonce) })),
+        "NonceReplay"
+      );
+    });
+
+    it("rejects a direct call that fakes the forwarder authority", async () => {
+      const fake = Keypair.generate();
+      const r = report(shares(300), { splitNum: 2, splitDen: 1 });
+      await expectError(
+        program.methods
+          .onReport(workflowMetadata(WORKFLOW_NAME, WORKFLOW_OWNER), encode(r))
+          .accountsPartial({
+            state: fwdState.publicKey,
+            forwarderAuthority: fake.publicKey,
+            issuerConfig: issuer,
+            creConfig,
+            attestation,
+            mint,
+            tokenProgram: TOKEN_2022_PROGRAM_ID,
+          })
+          .signers([fake])
+          .rpc(),
+        "InvalidForwarderAuthority"
+      );
+    });
+
+    it("rejects a forwarder state that is not the configured one", async () => {
+      const otherState = Keypair.generate();
+      await forwarder.methods
+        .initState()
+        .accountsPartial({ payer: admin.publicKey, state: otherState.publicKey })
+        .signers([otherState])
+        .rpc();
+      const r = report(shares(300), { splitNum: 2, splitDen: 1 });
+      await expectError(
+        forwarder.methods
+          .forward(workflowMetadata(WORKFLOW_NAME, WORKFLOW_OWNER), encode(r))
+          .accountsPartial({
+            state: otherState.publicKey,
+            forwarderAuthority: forwarderAuthorityPda(
+              forwarder.programId,
+              otherState.publicKey,
+              program.programId
+            ),
+            receiver: program.programId,
+          })
+          .remainingAccounts(receiverAccounts())
+          .rpc(),
+        "InvalidForwarder"
+      );
     });
   });
 });

@@ -1,0 +1,20 @@
+{
+  "schedule": "*/30 * * * * *",
+  "custodianUrl": "http://localhost:8787/holdings",
+  "evm": {
+    "rpcUrl": "https://eth-sepolia.nownodes.io",
+    "tokenAddress": "",
+    "decimals": 18,
+    "sampleSupplyMicro": "2000000"
+  },
+  "solana": {
+    "clusterId": 1,
+    "forwarderState": "8QoomCQyPSkJ8WopJbX9B4HyvrFzziwvJdU8hZE6DCr9",
+    "forwarderAuthority": "MPUtGXs1j1z1dAXo1exCTZbXCsWtFHTzWenRVTZftrY",
+    "issuerConfig": "Vsf7QBUfHQSqnQG1wzdxVakRqsnCqFsSDeeAgHAG3fP",
+    "creConfig": "9b5sZUa7pEBDQiA2TTP5nss6BHH9aUATw8vEMFPqAMgM",
+    "attestation": "DSezDRJyG6ZChmcpaig7fRhWjr3ehyoRmPWgQ9FS74wf",
+    "mint": "7yupUQoWo5R7T6tvk7dCVjN4vXB94vSmSUHWeG5b4zM9",
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  }
+}

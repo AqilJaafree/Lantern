@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 pub const ISSUER_SEED: &[u8] = b"issuer";
 pub const ATTESTATION_SEED: &[u8] = b"attestation";
+pub const CRE_CONFIG_SEED: &[u8] = b"cre";
 
 /// Custodian holdings are reported in micro-shares (1 share = 1_000_000),
 /// so the token must use 6 decimals for raw units to line up 1:1 pre-split.
@@ -46,5 +47,20 @@ pub struct Attestation {
     pub other_chain_supply: u64,
     pub max_supply: u64,
     pub submitted_slot: u64,
+    pub bump: u8,
+}
+
+/// Which CRE workflow may deliver reports through the Keystone Forwarder
+/// (`on_report`). Separate PDA so existing issuers need no migration.
+#[account]
+#[derive(InitSpace)]
+pub struct CreConfig {
+    pub issuer: Pubkey,
+    pub forwarder_program: Pubkey,
+    pub forwarder_state: Pubkey,
+    /// CRE workflow owner (EVM address), from report metadata bytes 42..62.
+    pub workflow_owner: [u8; 20],
+    /// CRE workflow name, from report metadata bytes 32..42.
+    pub workflow_name: [u8; 10],
     pub bump: u8,
 }

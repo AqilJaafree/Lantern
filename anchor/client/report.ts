@@ -8,6 +8,8 @@ export const CLUSTER_ID = { localnet: 0, devnet: 1, mainnet: 2 } as const;
 
 export const ISSUER_SEED = Buffer.from("issuer");
 export const ATTESTATION_SEED = Buffer.from("attestation");
+export const CRE_CONFIG_SEED = Buffer.from("cre");
+export const FORWARDER_SEED = Buffer.from("forwarder");
 
 /** Same shape as the program's `AttestationReport` (Anchor camelCase). */
 export interface AttestationReport {
@@ -29,6 +31,28 @@ export function issuerPda(programId: PublicKey, mint: PublicKey): PublicKey {
 
 export function attestationPda(programId: PublicKey, issuer: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync([ATTESTATION_SEED, issuer.toBuffer()], programId)[0];
+}
+
+export function creConfigPda(programId: PublicKey, issuer: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([CRE_CONFIG_SEED, issuer.toBuffer()], programId)[0];
+}
+
+/** PDA the Keystone Forwarder signs with when it CPIs into `receiver`. */
+export function forwarderAuthorityPda(
+  forwarderProgram: PublicKey,
+  forwarderState: PublicKey,
+  receiver: PublicKey
+): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [FORWARDER_SEED, forwarderState.toBuffer(), receiver.toBuffer()],
+    forwarderProgram
+  )[0];
+}
+
+/** Forwarder metadata: workflow_cid[32] | workflow_name[10] | workflow_owner[20] | report_id[2]. */
+export function workflowMetadata(name: Uint8Array, owner: Uint8Array, cid = new Uint8Array(32)): Buffer {
+  if (name.length !== 10 || owner.length !== 20 || cid.length !== 32) throw new Error("bad metadata field length");
+  return Buffer.concat([cid, name, owner, Buffer.alloc(2)]);
 }
 
 /** Backing rule: floor(shares × den / num) − other chains, floored at zero. */

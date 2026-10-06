@@ -38,4 +38,14 @@ pub enum LanternError {
     InvalidStaleness,
     #[msg("Arithmetic overflow")]
     Overflow,
+    #[msg("Forwarder program or state does not match the CRE config")]
+    InvalidForwarder,
+    #[msg("forwarder_authority is not the forwarder PDA for this receiver")]
+    InvalidForwarderAuthority,
+    #[msg("Report metadata is too short")]
+    InvalidMetadata,
+    #[msg("Report was not produced by the configured CRE workflow")]
+    UnauthorizedWorkflow,
+    #[msg("Report payload is not a Borsh AttestationReport")]
+    InvalidReportPayload,
 }
