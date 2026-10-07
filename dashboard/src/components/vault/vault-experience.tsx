@@ -559,7 +559,7 @@ export function VaultExperience() {
         <p className="mt-3 text-center text-xs leading-relaxed text-[#4a3220]">
           Try it while the gate is sealed: the chain rejects the mint and the gate flashes red. Mint while it&apos;s open and the token flies into the {mintLabel} ring.
         </p>
-        <div className="wood-ink mt-3 max-h-[calc(100dvh-340px)] overflow-y-auto">
+        <div className="wood-ink wood-scroll mt-3 max-h-[calc(100dvh-340px)] overflow-y-auto">
           {mintOpen &&
             (mintChain === "solana" ? (
               <MintConsole minter={s?.solana.minter} blockers={s?.blockers} onDone={() => state.reload()} onResult={onMint} />
@@ -651,7 +651,7 @@ function HistoryScroll({ items, error, onRetry, onClose }: { items: HistoryItem[
       title="ATTESTATION & MINT HISTORY"
       shown
       label="History"
-      className="pointer-events-auto absolute left-1/2 top-[8vh] z-30 w-[min(780px,calc(100vw-2rem))] -translate-x-1/2"
+      className="pointer-events-auto absolute left-1/2 top-[4.25rem] z-30 w-[min(1040px,calc(100vw-1.5rem))] -translate-x-1/2"
     >
       <button type="button" onClick={onClose} className="absolute -right-3 -top-3 rounded p-3 text-[#a8987f] hover:text-[#efe4cf]" aria-label="Close history (Esc)">
         <X className="h-4 w-4" aria-hidden />
@@ -670,7 +670,7 @@ function HistoryScroll({ items, error, onRetry, onClose }: { items: HistoryItem[
           </button>
         ))}
       </div>
-      <div className="ink-serif max-h-[min(52vh,calc(100dvh-24rem))] overflow-y-auto pb-6 pr-1">
+      <div className="ink-serif ink-scroll max-h-[calc(100dvh-19rem)] overflow-y-auto pb-6 pr-2">
         {error && !items ? (
           <p className="text-[13px] text-[#ec6a52]">
             Couldn&apos;t load history ({error}).{" "}
@@ -683,7 +683,7 @@ function HistoryScroll({ items, error, onRetry, onClose }: { items: HistoryItem[
         ) : (
           <ul className="divide-y divide-[#d6aa64]/10">
             {shown.map((it) => (
-              <li key={it.signature} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 py-2 sm:grid-cols-[150px_110px_1fr_auto]">
+              <li key={it.signature} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 py-2 sm:grid-cols-[170px_120px_1fr_auto]">
                 <span className="font-mono text-[11px] tabular-nums text-[#a8987f]">{it.time ? new Date(it.time * 1000).toLocaleString() : "—"}</span>
                 <span className={`font-mono text-[11px] uppercase tracking-wider ${KIND_INK[it.kind]}`}>{it.kind === "failed" ? "rejected" : it.kind}</span>
                 <span className="col-span-2 text-[13px] leading-snug text-[#efe4cf] sm:col-span-1">
