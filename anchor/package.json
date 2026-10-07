@@ -9,7 +9,8 @@
     "relay": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/relay.ts",
     "examples": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/examples.ts",
     "set-cre-config": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/set-cre-config.ts",
-    "demo": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/demo.ts"
+    "demo": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/demo.ts",
+    "set-minter": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/set-minter.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",

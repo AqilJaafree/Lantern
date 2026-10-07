@@ -31,6 +31,14 @@ pub struct PauseChanged {
 }
 
 #[event]
+pub struct MinterChanged {
+    pub issuer: Pubkey,
+    pub old_minter: Pubkey,
+    pub new_minter: Pubkey,
+    pub open: bool,
+}
+
+#[event]
 pub struct CorporateAction {
     pub issuer: Pubkey,
     pub old_split_num: u32,

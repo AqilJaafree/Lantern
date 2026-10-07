@@ -10,7 +10,7 @@
 
 | Area | Status |
 |------|--------|
-| Solana program S1–S8 | ✅ On Devnet, 27 tests. Added **S9 `on_report`** (CRE path) and `set_cre_config` |
+| Solana program S1–S8 | ✅ On Devnet, 32 tests. Added **S9 `on_report`** (CRE path), `set_cre_config`, and **S10 `set_minter`** (open minting for the demo) |
 | CRE workflow C1–C6 | ✅ Native Solana write through the Keystone Forwarder; evidence is simulation plus `--broadcast` Devnet transactions. C7/C8 cut. DON deployment needs CRE Early Access |
 | NOWNodes N1, N3, N6 | ✅ Sepolia `totalSupply` (CRE `EVMClient` and dashboard); endpoint map in README. **N2 not possible:** NOWNodes has no Solana Devnet endpoint. N4/N5 cut |
 | Mock custodian M1–M3 | ✅ Plus `POST /set` and `/reset` for the demo script |
@@ -85,6 +85,7 @@ Priority: **P0** must ship, **P1** ship if time allows, **P2** roadmap only.
 | S2 | P0 | `submit_attestation(report, signature)`: callable by **anyone** (the relayer is an untrusted payer). The program verifies the report's signature against `IssuerConfig.attestor` using the native Ed25519 or Secp256k1 signature program via instruction introspection. Rejects if: signature invalid, `nonce ≤ last nonce`, `observed_at ≤ last observed_at`, `observed_at > now + 60s` (clock skew; Devnet's clock can lag wall time), or report's `program_id` / `issuer_config` / `cluster` fields don't match (domain separation) |
 | S3 | P0 | `mint_gated(amount)`: requires the `minter` signer. Mints only if `!auto_paused && !admin_paused`, `now − observed_at ≤ staleness_secs`, and `current_supply + amount ≤ max_supply` |
 | S4 | P0 | Program PDA is the sole mint authority of the token, so there is no bypass |
+| S10 | P1 | `set_minter(new_minter)` (admin): rotate the minter, or set the default pubkey for **open minting**, so any wallet may call `mint_gated` (demo mode, so judges can mint from their own wallets). Cap, freshness and pause checks still apply to every caller. A production issuer keeps a single minter |
 | S5 | P0 | Auto-pause: `submit_attestation` sets `auto_paused = true` when `current_supply > max_supply` (shortfall) and clears **only** `auto_paused` when backing is restored. It never touches `admin_paused` |
 | S6 | P1 | `admin_pause` / `admin_unpause` by admin as manual override (sets/clears `admin_paused` only) |
 | S7 | P1 | Events emitted on attestation, mint, pause/unpause, and corporate action, so the dashboard can index them |

@@ -211,6 +211,17 @@ function toItem(
     const mint = events.find((e) => e.name === "Minted" || e.name === "minted");
     const split = events.find((e) => e.name === "CorporateAction" || e.name === "corporateAction");
     const pause = events.find((e) => e.name === "PauseChanged" || e.name === "pauseChanged");
+    const minterChange = events.find((e) => e.name === "MinterChanged" || e.name === "minterChanged");
+
+    if (minterChange) {
+      const d = minterChange.data as Record<string, unknown>;
+      const who = String(d.new_minter);
+      return {
+        ...base,
+        kind: "pause",
+        summary: d.open ? "Minting opened to any wallet" : `Minter set to ${who.slice(0, 4)}…${who.slice(-4)}`,
+      };
+    }
 
     if (split) {
       const d = split.data as Record<string, unknown>;

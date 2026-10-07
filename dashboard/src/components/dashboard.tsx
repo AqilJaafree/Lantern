@@ -2,7 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, Inbox, PauseCircle, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { LANTERN, SEPOLIA, etherscanAddress, explorerAddress, explorerTx } from "@/lib/config";
+import { LANTERN, OPEN_MINTER, SEPOLIA, etherscanAddress, explorerAddress, explorerTx } from "@/lib/config";
 import { ago, formatAmount, formatRatio, truncate } from "@/lib/format";
 import type { HistoryItem, LanternState } from "@/lib/types";
 import { DemoControls } from "./demo-controls";
@@ -50,6 +50,9 @@ export function Dashboard() {
           <p className="text-xs text-muted-foreground">Never more tokens than shares. Mints gated onchain by CRE-signed attestations.</p>
         </div>
         <div className="flex items-center gap-2">
+          {s?.solana.minter === OPEN_MINTER && (
+            <span className="rounded-sm bg-info/15 px-2 py-1 font-mono text-xs text-info">OPEN MINTING</span>
+          )}
           <span className="rounded-sm bg-warning/15 px-2 py-1 font-mono text-xs text-warning">SOLANA DEVNET</span>
           <span className="rounded-sm bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">SEPOLIA</span>
         </div>

@@ -468,4 +468,68 @@ describe("lantern", () => {
       );
     });
   });
+
+  describe("open minting (set_minter)", () => {
+    const stranger = Keypair.generate();
+    let strangerAta: PublicKey;
+
+    function setMinter(newMinter: PublicKey, signer: Keypair = admin) {
+      return program.methods
+        .setMinter(newMinter)
+        .accountsPartial({ admin: signer.publicKey, issuerConfig: issuer })
+        .signers(signer === admin ? [] : [signer])
+        .rpc();
+    }
+
+    function mintAs(signer: Keypair, to: PublicKey, amount: BN) {
+      return program.methods
+        .mintGated(amount)
+        .accountsPartial({
+          minter: signer.publicKey,
+          issuerConfig: issuer,
+          attestation,
+          mint,
+          destination: to,
+          tokenProgram: TOKEN_2022_PROGRAM_ID,
+        })
+        .signers([signer])
+        .rpc();
+    }
+
+    before(async () => {
+      const sig = await conn.requestAirdrop(stranger.publicKey, 1e9);
+      await conn.confirmTransaction(sig, "confirmed");
+      strangerAta = await createAssociatedTokenAccountIdempotent(
+        conn, stranger, mint, stranger.publicKey, { commitment: "confirmed" }, TOKEN_2022_PROGRAM_ID
+      );
+      // Fresh attestation (cap 148) so only the minter rule is under test.
+      await attest(report(shares(300), { splitNum: 2, splitDen: 1 }));
+    });
+
+    it("only the admin can change the minter", async () => {
+      await expectError(setMinter(PublicKey.default, stranger), "Unauthorized");
+    });
+
+    it("rejects a non-minter while minting is restricted", async () => {
+      await expectError(mintAs(stranger, strangerAta, shares(1)), "Unauthorized");
+    });
+
+    it("lets any wallet mint within backing once opened", async () => {
+      await setMinter(PublicKey.default);
+      expect((await program.account.issuerConfig.fetch(issuer)).minter.toBase58()).to.eq(PublicKey.default.toBase58());
+      await mintAs(stranger, strangerAta, shares(1));
+      const bal = await conn.getTokenAccountBalance(strangerAta, provider.opts.commitment);
+      expect(bal.value.amount).to.eq(shares(1).toString());
+    });
+
+    it("still enforces the cap in open mode", async () => {
+      await expectError(mintAs(stranger, strangerAta, shares(1000)), "ExceedsBacking");
+    });
+
+    it("closing it again restores the single minter", async () => {
+      await setMinter(minter.publicKey);
+      await expectError(mintAs(stranger, strangerAta, shares(1)), "Unauthorized");
+      await mintGated(shares(1));
+    });
+  });
 });

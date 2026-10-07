@@ -14,7 +14,7 @@ Backing proof today is a trust claim or a periodic PDF. Lantern turns it into a 
 
 | Component | State |
 |---|---|
-| Solana program (Anchor) | ✅ Deployed to **Devnet**, 27 tests passing |
+| Solana program (Anchor) | ✅ Deployed to **Devnet**, 32 tests passing. **Open minting** is on for the demo (see Trust model) |
 | Chainlink CRE workflow | ✅ Writes DON-signed attestations to Solana through the Keystone Forwarder. Evidence: CLI simulation plus `--broadcast` transactions on Devnet |
 | NOWNodes | ✅ Ethereum Sepolia supply reads (CRE `EVMClient` and dashboard) |
 | Sepolia mirror token | ✅ Deployed: [`0xb41e…e54C`](https://sepolia.etherscan.io/address/0xb41e1D98421BbD79d6D094e48DE9BFE01393e54C) |
@@ -67,7 +67,7 @@ max_supply_solana = floor(shares_held × split_den / split_num) − ceil(supply_
 
 - **Who attests:** a Chainlink CRE workflow, whose reports are signed by the oracle network and verified onchain by Chainlink's Keystone Forwarder. Lantern verifies three things itself: the call came from the forwarder's authority address for Lantern, the forwarder state is the configured one, and the report's workflow owner and name match `CreConfig`. Any other workflow using the same forwarder is rejected (`UnauthorizedWorkflow`).
 - **Workflow can't overstate backing:** the program recomputes the cap from the signed share count, split and other-chain supply. The workflow can't sign an inflated cap.
-- **Minter:** only the `minter` key can mint, and only within the cap. The admin can pause minting and set the CRE config, but can't raise the cap.
+- **Minter:** the admin chooses who may mint with `set_minter`: either a single key, or **open minting**, where any wallet may mint. Open minting is on for the public Devnet demo so judges can mint from their own wallets ([tx](https://explorer.solana.com/tx/2LSKEw3SJEuy5BMuravQpqjvkJQ2hghmLnb13d8goFSF6WiDM7Hw28YYJS9pFEmwE2P6pearKAEWK74XMJmj2DN7?cluster=devnet)). Every mint, in either mode, still requires no pause, a fresh attestation, and `supply + amount ≤ cap`. A real issuer would restrict minting to its own key. The admin can pause, set the CRE config, and change the minter, but can't raise the cap.
 - **Fail closed:** attestations expire after a 180-second staleness window, so a stale feed blocks minting. Nonces and timestamps must strictly increase. The cluster ID is part of every report.
 - **Scope:** minting is **gated on Solana** and **monitored on other chains**. Lantern doesn't control the Sepolia mirror's mint authority. A Sepolia mint between two attestations is subtracted from Solana capacity at the next attestation.
 - **Current limits:** the CRE evidence comes from `cre workflow simulate --broadcast`, which uses Chainlink's **simulation forwarder** on Devnet and the simulator's fixed workflow owner (`0xaa…aa`). A deployed workflow would use the live Keystone Forwarder and your real workflow owner, a one-transaction config change (`yarn set-cre-config --env production`).
@@ -178,7 +178,7 @@ cd dashboard && npm install
 npm run dev   # http://localhost:3000
 ```
 
-The minter is the admin wallet. Import it into a Devnet wallet such as Phantom to mint from the console; other wallets are rejected onchain with `Unauthorized`.
+Open minting is on, so any Devnet wallet (Phantom, Solflare, …) can mint from the console within backing, and minted tokens go to that wallet. If the admin restricts minting (`yarn set-minter --minter <pubkey>`), other wallets are rejected onchain with `Unauthorized`.
 
 ---
 
@@ -195,7 +195,7 @@ The minter is the admin wallet. Import it into a Devnet wallet such as Phantom t
 ```bash
 cd anchor && yarn install
 yarn build   # anchor build (platform-tools v1.54) + IDL/types for lantern and test_forwarder
-yarn test    # 27 tests on a local validator
+yarn test    # 32 tests on a local validator
 ```
 
 The tests cover:
@@ -212,6 +212,7 @@ The tests cover:
   - a replayed nonce is rejected,
   - a faked forwarder authority is rejected,
   - an unconfigured forwarder state is rejected.
+- **Open minting (`set_minter`):** only the admin can change the minter; a non-minter is rejected while minting is restricted; any wallet can mint once it's opened; the cap is still enforced in open mode; closing it restores the single minter.
 
 ### Full demo
 
@@ -228,6 +229,7 @@ The script is relative to current supply, so re-runs work. It handles public-RPC
 ```bash
 yarn seed:devnet                                       # new token + issuer + first attestation
 yarn set-cre-config --env simulation --workflow lantern-attest-staging
+yarn set-minter --open                                 # any wallet may mint (or --minter <pubkey>)
 yarn relay --shares 102 --evm 2 [--split 2/1]          # one attestation via the Ed25519 relayer
 yarn examples                                          # relayer-path example transactions
 ```
@@ -243,8 +245,9 @@ The scripts use `~/.config/solana/id.json` as admin, minter and fee payer. `anch
 | `init_issuer` | Admin | Creates the issuer config and an empty attestation. Requires the config PDA to be the token's mint authority (and its UI-multiplier authority if one exists), with no other freeze authority, and 6 decimals. |
 | `on_report` | Keystone Forwarder (CPI) | CRE path. Checks the forwarder state and authority PDA, plus the workflow owner and name from `metadata`, then applies the report. |
 | `submit_attestation` | Anyone (fee payer only) | Relayer path. Verifies the attestor's Ed25519 signature in the preceding instruction, then applies the report. |
-| `mint_gated` | Minter | Mints only if not paused, the attestation is within the staleness window, and `supply + amount ≤ max_supply`. |
+| `mint_gated` | Minter (any wallet in open mode) | Mints only if not paused, the attestation is within the staleness window, and `supply + amount ≤ max_supply`. |
 | `set_cre_config` | Admin | Sets the allowed forwarder program, forwarder state, workflow owner and workflow name. |
+| `set_minter` | Admin | Rotates the minter key, or sets the default pubkey (`1111…1111`) for **open minting**. Emits `MinterChanged`. |
 | `set_admin_paused` | Admin | Manual pause or unpause, separate from `auto_paused`. |
 
 "Applies the report" (`apply_report`, shared by both paths) means: check cluster, nonce and timestamp; recompute the cap; store the report; set or clear `auto_paused`; and update the Token-2022 UI multiplier when the split changes. It emits `AttestationSubmitted`, `PauseChanged` and `CorporateAction`.

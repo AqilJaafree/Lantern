@@ -8,6 +8,10 @@ pub const CRE_CONFIG_SEED: &[u8] = b"cre";
 /// so the token must use 6 decimals for raw units to line up 1:1 pre-split.
 pub const TOKEN_DECIMALS: u8 = 6;
 
+/// `IssuerConfig.minter == OPEN_MINTER` means any wallet may call `mint_gated`
+/// (demo mode). Backing, freshness and pause checks still apply to everyone.
+pub const OPEN_MINTER: Pubkey = Pubkey::new_from_array([0; 32]);
+
 /// How far an attestation's `observed_at` may run ahead of the cluster clock.
 /// Devnet's clock can lag wall time, so this is looser than the 30s in the PRD.
 pub const MAX_FUTURE_SKEW_SECS: i64 = 60;

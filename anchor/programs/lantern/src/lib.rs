@@ -45,6 +45,11 @@ pub mod lantern {
         instructions::on_report::handler(ctx, metadata, report)
     }
 
+    /// Admin: rotate the minter, or set the default pubkey for open minting.
+    pub fn set_minter(ctx: Context<SetMinter>, new_minter: Pubkey) -> Result<()> {
+        instructions::set_minter::handler(ctx, new_minter)
+    }
+
     /// S6: admin manual pause / unpause.
     pub fn set_admin_paused(ctx: Context<SetAdminPaused>, paused: bool) -> Result<()> {
         instructions::set_admin_paused::handler(ctx, paused)

@@ -1,6 +1,9 @@
 /** Public Devnet / Sepolia addresses (see anchor/deployments/devnet.json). No secrets here. */
 export const CLUSTER = "devnet" as const;
 
+/** IssuerConfig.minter set to this (the default pubkey) means any wallet may mint. */
+export const OPEN_MINTER = "11111111111111111111111111111111";
+
 export const SOLANA_RPC = process.env.NEXT_PUBLIC_SOLANA_RPC ?? "https://api.devnet.solana.com";
 
 export const LANTERN = {

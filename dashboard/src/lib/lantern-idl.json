@@ -119,10 +119,7 @@
       "accounts": [
         {
           "name": "minter",
-          "signer": true,
-          "relations": [
-            "issuer_config"
-          ]
+          "signer": true
         },
         {
           "name": "issuer_config",
@@ -453,6 +450,61 @@
       ]
     },
     {
+      "name": "set_minter",
+      "docs": [
+        "Admin: rotate the minter, or set the default pubkey for open minting."
+      ],
+      "discriminator": [
+        13,
+        170,
+        92,
+        172,
+        137,
+        194,
+        39,
+        2
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "issuer_config"
+          ]
+        },
+        {
+          "name": "issuer_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "issuer_config.mint",
+                "account": "IssuerConfig"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_minter",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "submit_attestation",
       "docs": [
         "S2 + S5 + S8: verify and store a signed backing report, auto-pause or",
@@ -629,6 +681,19 @@
         117,
         114,
         121
+      ]
+    },
+    {
+      "name": "MinterChanged",
+      "discriminator": [
+        17,
+        194,
+        112,
+        198,
+        35,
+        91,
+        61,
+        184
       ]
     },
     {
@@ -1163,6 +1228,30 @@
           {
             "name": "attestation_nonce",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MinterChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "issuer",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_minter",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_minter",
+            "type": "pubkey"
+          },
+          {
+            "name": "open",
+            "type": "bool"
           }
         ]
       }

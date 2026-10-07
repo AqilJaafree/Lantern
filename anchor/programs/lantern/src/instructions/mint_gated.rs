@@ -13,7 +13,6 @@ pub struct MintGated<'info> {
         seeds = [ISSUER_SEED, mint.key().as_ref()],
         bump = issuer_config.bump,
         has_one = mint,
-        has_one = minter @ LanternError::Unauthorized,
     )]
     pub issuer_config: Account<'info, IssuerConfig>,
 
@@ -41,6 +40,11 @@ pub fn handler(ctx: Context<MintGated>, amount: u64) -> Result<()> {
     let attestation = &ctx.accounts.attestation;
     let now = Clock::get()?.unix_timestamp;
 
+    // Single minter, or open minting when the admin set OPEN_MINTER.
+    require!(
+        config.minter == OPEN_MINTER || config.minter == ctx.accounts.minter.key(),
+        LanternError::Unauthorized
+    );
     require!(!config.admin_paused, LanternError::AdminPaused);
     require!(!config.auto_paused, LanternError::AutoPaused);
 

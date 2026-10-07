@@ -4,7 +4,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Transaction } from "@solana/web3.js";
 import { useState } from "react";
-import { LANTERN, explorerTx } from "@/lib/config";
+import { LANTERN, OPEN_MINTER, explorerTx } from "@/lib/config";
 import { truncate } from "@/lib/format";
 import { PROGRAM_ERRORS, buildMintInstructions } from "@/lib/mint";
 import { ExtLink, Panel, buttonClass } from "./ui";
@@ -25,7 +25,8 @@ export function MintConsole({ minter, onDone }: { minter?: string; onDone: () =>
   const parsed = Number(amount);
   const invalid = !Number.isFinite(parsed) || parsed <= 0;
   const busy = status.kind === "signing" || status.kind === "confirming";
-  const notMinter = publicKey && minter && publicKey.toBase58() !== minter;
+  const open = minter === OPEN_MINTER;
+  const notMinter = publicKey && minter && !open && publicKey.toBase58() !== minter;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,8 +61,14 @@ export function MintConsole({ minter, onDone }: { minter?: string; onDone: () =>
       {!publicKey ? (
         <div className="flex flex-col items-start gap-3">
           <p className="text-sm text-muted-foreground">
-            Connect the minter wallet to mint {LANTERN.symbol} on Devnet. Other wallets are rejected onchain with{" "}
-            <code className="font-mono">Unauthorized</code>.
+            {open ? (
+              <>Open minting is on: any Devnet wallet can mint {LANTERN.symbol}, within attested backing.</>
+            ) : (
+              <>
+                Connect the minter wallet to mint {LANTERN.symbol} on Devnet. Other wallets are rejected onchain with{" "}
+                <code className="font-mono">Unauthorized</code>.
+              </>
+            )}
           </p>
           <WalletMultiButton />
         </div>
@@ -92,6 +99,11 @@ export function MintConsole({ minter, onDone }: { minter?: string; onDone: () =>
             <WalletMultiButton />
           </div>
           {invalid && <p className="text-xs text-destructive">Enter an amount greater than 0.</p>}
+          {open && (
+            <p className="text-xs text-muted-foreground">
+              Open minting (demo mode): mints go to your wallet. The cap, freshness and pause checks still apply.
+            </p>
+          )}
           {notMinter && (
             <p className="text-xs text-warning">
               Connected wallet {truncate(publicKey.toBase58())} is not the minter ({truncate(minter!)}). The program will reject this mint.

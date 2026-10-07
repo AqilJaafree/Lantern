@@ -6,6 +6,7 @@ pub mod mint_gated;
 pub mod on_report;
 pub mod set_admin_paused;
 pub mod set_cre_config;
+pub mod set_minter;
 pub mod submit_attestation;
 
 pub use init_issuer::*;
@@ -13,4 +14,5 @@ pub use mint_gated::*;
 pub use on_report::*;
 pub use set_admin_paused::*;
 pub use set_cre_config::*;
+pub use set_minter::*;
 pub use submit_attestation::*;
