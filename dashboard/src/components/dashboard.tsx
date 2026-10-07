@@ -29,14 +29,14 @@ export function Dashboard() {
           </h1>
           <p className="text-xs text-muted-foreground">Never more tokens than shares. Mints gated onchain by CRE-signed attestations.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/vault" className="inline-flex items-center gap-1 rounded-sm bg-primary/15 px-2 py-1 font-mono text-xs text-primary hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/" className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm bg-primary/15 px-2 py-1 font-mono text-xs text-primary hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             ENTER THE VAULT <ArrowRight className="h-3 w-3" aria-hidden />
           </Link>
           {s?.solana.minter === OPEN_MINTER && (
-            <span className="rounded-sm bg-info/15 px-2 py-1 font-mono text-xs text-info">OPEN MINTING</span>
+            <span className="whitespace-nowrap rounded-sm bg-info/15 px-2 py-1 font-mono text-xs text-info">OPEN MINTING</span>
           )}
-          <span className="rounded-sm bg-warning/15 px-2 py-1 font-mono text-xs text-warning">SOLANA DEVNET</span>
+          <span className="whitespace-nowrap rounded-sm bg-warning/15 px-2 py-1 font-mono text-xs text-warning">SOLANA DEVNET</span>
           <span className="rounded-sm bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">SEPOLIA</span>
         </div>
       </header>

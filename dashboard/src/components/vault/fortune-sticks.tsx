@@ -62,7 +62,7 @@ export function Stick({
     </span>
   );
 
-  const style = { rotate: `${tilt}deg` } as React.CSSProperties;
+  const style = { "--tilt": `${tilt}deg` } as React.CSSProperties;
   if (!onClick) {
     return (
       <div className="stick" style={style} onMouseEnter={() => sfx.tick()}>

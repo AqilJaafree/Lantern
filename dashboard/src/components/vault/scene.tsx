@@ -115,11 +115,14 @@ export default function VaultScene({
   events,
   started,
   reduced,
+  compact = false,
 }: {
   target: VaultTarget;
   events: React.RefObject<VaultEvent[]>;
   started: boolean;
   reduced: boolean;
+  /** Phones: lighter rendering (smaller reflection buffer, no MSAA, lower DPR). */
+  compact?: boolean;
 }) {
   const world = useMemo(() => createWorld(), []);
   const targetRef = useRef({ ...target, started, reduced });
@@ -137,7 +140,7 @@ export default function VaultScene({
   return (
     <div className="relative h-full w-full">
     <Canvas
-      dpr={[1, 1.75]}
+      dpr={compact ? [1, 1.5] : [1, 1.75]}
       camera={{ position: [0, 36, 64], fov: 40, near: 0.1, far: 220 }}
       gl={{ antialias: false, powerPreference: "high-performance" }}
       aria-label="Lantern vault: gold bars are custodian shares, orbiting lights are tokens, the ring on the right is the mint gate"
@@ -157,7 +160,7 @@ export default function VaultScene({
 
       <Director world={world} events={events} targetRef={targetRef} />
       <Rig world={world} targetRef={targetRef} />
-      <Floor />
+      <Floor compact={compact} />
       <Dais world={world} targetRef={targetRef} />
       <Bars world={world} targetRef={targetRef} />
       <Lantern world={world} targetRef={targetRef} />
@@ -170,11 +173,11 @@ export default function VaultScene({
       <Particles world={world} />
       <Sparkles count={160} scale={[36, 14, 36]} position={[0, 7, -2]} size={2.2} speed={0.25} opacity={0.55} color="#ffcf7a" />
 
-      <Post world={world} />
+      <Post world={world} compact={compact} />
       <LabelProjector world={world} anchors={anchors} els={labelEls} />
     </Canvas>
       {/* Plain DOM labels, positioned each frame by LabelProjector (cheaper than one React root per label). */}
-      <div className={`pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-1000 ${started ? "opacity-100" : "opacity-0"}`} aria-hidden>
+      <div className={`pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-1000 max-sm:hidden ${started ? "opacity-100" : "opacity-0"}`} aria-hidden>
         {chains.map((ch, i) => (
           <div key={ch.key} ref={(el) => void (labelEls.current[i] = el)} className="absolute left-0 top-0 whitespace-nowrap font-mono text-[10px] tracking-[0.2em] opacity-80" style={{ color: ch.color, textShadow: "0 0 8px rgba(0,0,0,.9)" }}>
             {ch.label.toUpperCase()} · {ch.supply.toLocaleString("en-US", { maximumFractionDigits: 2 })}
@@ -280,6 +283,8 @@ function Rig({ world, targetRef }: { world: World; targetRef: TargetRef }) {
   const t0 = useRef<number | null>(null);
   const from = useMemo(() => new THREE.Vector3(0, 36, 64), []);
   const to = useMemo(() => new THREE.Vector3(0, 7.4, 25), []);
+  // Portrait (phones): pull back, widen the lens and centre the vault between the HUD layers.
+  const toPortrait = useMemo(() => new THREE.Vector3(0, 10.5, 30), []);
   const look = useMemo(() => new THREE.Vector3(), []);
   const pos = useMemo(() => new THREE.Vector3(), []);
   const par = useRef({ x: 0, y: 0 });
@@ -290,7 +295,14 @@ function Rig({ world, targetRef }: { world: World; targetRef: TargetRef }) {
     world.time = now;
     if (started && t0.current === null) t0.current = now;
     const k = t0.current === null ? 0 : reduced ? 1 : Math.min(1, (now - t0.current) / 4.8);
-    pos.lerpVectors(from, to, 1 - Math.pow(1 - k, 4));
+    const portrait = state.size.width / state.size.height < 0.9;
+    const cam = state.camera as THREE.PerspectiveCamera;
+    const fov = portrait ? 58 : 40;
+    if (cam.fov !== fov) {
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+    }
+    pos.lerpVectors(from, portrait ? toPortrait : to, 1 - Math.pow(1 - k, 4));
 
     par.current.x += (state.pointer.x * 2.4 - par.current.x) * damp(dt, 2.5);
     par.current.y += (state.pointer.y * 1.1 - par.current.y) * damp(dt, 2.5);
@@ -299,7 +311,7 @@ function Rig({ world, targetRef }: { world: World; targetRef: TargetRef }) {
     const sx = (Math.random() - 0.5) * s * 0.5;
     const sy = (Math.random() - 0.5) * s * 0.5;
     state.camera.position.set(pos.x + par.current.x + sway + sx, pos.y + par.current.y + sy, pos.z);
-    look.set(2.2 + sx * 0.3, 3.4 + sy * 0.3, -2);
+    look.set((portrait ? 0.4 : 2.2) + sx * 0.3, (portrait ? 5.2 : 3.4) + sy * 0.3, -2);
     state.camera.lookAt(look);
     world.shake *= Math.exp(-dt * 4);
   });
@@ -308,14 +320,14 @@ function Rig({ world, targetRef }: { world: World; targetRef: TargetRef }) {
 
 /* ── Floor ──────────────────────────────────────────────────────────────── */
 
-function Floor() {
+function Floor({ compact }: { compact: boolean }) {
   return (
     <group>
       <mesh rotation-x={-Math.PI / 2}>
         <planeGeometry args={[160, 160]} />
         <MeshReflectorMaterial
           blur={[400, 120]}
-          resolution={1024}
+          resolution={compact ? 512 : 1024}
           mixBlur={1}
           mixStrength={7}
           roughness={0.85}
@@ -1266,7 +1278,7 @@ function Particles({ world }: { world: World }) {
 
 /* ── Post-processing ───────────────────────────────────────────────────── */
 
-function Post({ world }: { world: World }) {
+function Post({ world, compact }: { world: World; compact: boolean }) {
   const ca = useRef<ChromaticAberrationEffect>(null);
   const offset = useMemo(() => new THREE.Vector2(0.0006, 0.0006), []);
   useFrame((_, dt) => {
@@ -1275,7 +1287,7 @@ function Post({ world }: { world: World }) {
     if (ca.current) ca.current.offset.set(a, a);
   });
   return (
-    <EffectComposer multisampling={4}>
+    <EffectComposer multisampling={compact ? 0 : 4}>
       <Bloom mipmapBlur intensity={1.25} luminanceThreshold={0.62} luminanceSmoothing={0.2} radius={0.78} />
       <ChromaticAberration ref={ca} offset={offset} radialModulation={false} modulationOffset={0} blendFunction={BlendFunction.NORMAL} />
       <Noise opacity={0.035} premultiply blendFunction={BlendFunction.SCREEN} />

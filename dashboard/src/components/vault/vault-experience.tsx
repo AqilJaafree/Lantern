@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowLeft,
   Check,
   Copy,
   Eye,
@@ -11,7 +10,6 @@ import {
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LANTERN, explorerTx } from "@/lib/config";
 import { formatAmount, formatRatio, truncate } from "@/lib/format";
@@ -81,6 +79,13 @@ const subscribeReduced = (cb: () => void) => {
   return () => m.removeEventListener("change", cb);
 };
 const reducedSnapshot = () => window.matchMedia(REDUCED).matches;
+const PHONE = "(max-width: 640px)";
+const subscribePhone = (cb: () => void) => {
+  const m = window.matchMedia(PHONE);
+  m.addEventListener("change", cb);
+  return () => m.removeEventListener("change", cb);
+};
+const phoneSnapshot = () => window.matchMedia(PHONE).matches;
 
 export function VaultExperience() {
   const state = usePoll<LanternState>("/api/state", 5000);
@@ -91,6 +96,7 @@ export function VaultExperience() {
   const [introGone, setIntroGone] = useState(false);
   const gl = useSyncExternalStore(noop, glSnapshot, () => null);
   const reduced = useSyncExternalStore(subscribeReduced, reducedSnapshot, () => false);
+  const phone = useSyncExternalStore(subscribePhone, phoneSnapshot, () => false);
   const [muted, setMutedState] = useState(false);
   const [hud, setHud] = useState(true);
   const [shares, setShares] = useState("10");
@@ -312,7 +318,6 @@ export function VaultExperience() {
         <h1 className="font-mono text-lg">LANTERN / vault</h1>
         <p className="text-sm text-muted-foreground">This browser can&apos;t run WebGL, so the 3D vault is unavailable. The demo controls still work.</p>
         <DemoControls onDone={state.reload} />
-        <Link href="/" className="text-sm text-info underline">Back to the backing desk</Link>
       </main>
     );
   }
@@ -324,7 +329,7 @@ export function VaultExperience() {
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-[#04050a] text-white">
-      <div className="absolute inset-0">{gl && <VaultScene target={target} events={events} started={started} reduced={reduced} />}</div>
+      <div className="absolute inset-0">{gl && <VaultScene target={target} events={events} started={started} reduced={reduced} compact={phone} />}</div>
 
       {/* ── Intro ─────────────────────────────────────────────── */}
       {!introGone && (
@@ -360,12 +365,9 @@ export function VaultExperience() {
         {/* Top bar */}
         <header className="pointer-events-auto absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
           <div className="flex items-center gap-3">
-            <Link href="/" className="glass inline-flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:text-white" aria-label="Back to the backing desk">
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-            </Link>
             <div>
               <p className="font-mono text-sm font-semibold tracking-[0.3em] text-amber-200">LANTERN</p>
-              <p className="font-mono text-[10px] tracking-[0.2em] text-white/50">{LANTERN.symbol} VAULT · SOLANA DEVNET</p>
+              <p className="hidden font-mono text-[10px] tracking-[0.2em] text-white/50 min-[400px]:block">{LANTERN.symbol} VAULT · SOLANA DEVNET</p>
             </div>
           </div>
 
@@ -389,31 +391,32 @@ export function VaultExperience() {
           verse="幣不過株・鎖上為証"
           shown={started && hud}
           label="Backing"
-          className="pointer-events-auto absolute left-5 top-24 w-[min(300px,calc(100vw-2.5rem))]"
+          className="pointer-events-auto absolute left-4 top-[4.25rem] w-[158px] sm:left-5 sm:top-24 sm:w-[300px]"
         >
-          <p className={`brush mt-1 pr-6 text-[2.9rem] leading-none tabular-nums ${healthTone}`}>
+          <p className={`brush mt-1 text-[1.7rem] leading-none tabular-nums sm:pr-6 sm:text-[2.9rem] ${healthTone}`}>
             <Counter value={ratio === null ? null : ratio / 100} />
           </p>
-          <p className={`ink-serif mt-1 text-[11px] font-bold tracking-[0.3em] ${healthTone}`}>{healthWord}</p>
+          <p className={`ink-serif mt-1 text-[9px] font-bold tracking-[0.2em] sm:text-[11px] sm:tracking-[0.3em] ${healthTone}`}>{healthWord}</p>
           {view && s && (
-            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 pr-6">
+            <dl className="mt-3 hidden grid-cols-2 gap-x-4 gap-y-2.5 pr-6 sm:grid">
               <Fact label="Shares in custody" value={view.sharesN.toLocaleString("en-US", { maximumFractionDigits: 2 })} />
               <Fact label="Tokens outstanding" value={formatAmount(view.total)} />
               <Fact label="Attested cap" value={formatAmount(s.attestation.maxSupply)} />
               <Fact label="Split" value={`${override?.num ?? s.custodian?.splitNum ?? s.attestation.splitNum}/${override?.den ?? s.custodian?.splitDen ?? s.attestation.splitDen}`} />
             </dl>
           )}
-          <p className="ink-serif mt-3 border-t border-[#d6aa64]/15 pt-2 pr-6 text-[11px] italic text-[#a8987f]">
+          <p className="ink-serif mt-3 hidden border-t border-[#d6aa64]/15 pt-2 pr-6 text-[11px] italic text-[#a8987f] sm:block">
             One gold bar = {view?.unit ?? 1} share{(view?.unit ?? 1) > 1 ? "s" : ""} · one orb ≈ {view && view.total > 0n ? (Number(view.total) / 1e6 / 160).toFixed(2) : "—"} tokens
           </p>
           {view?.pending && (
             <button
               type="button"
               onClick={() => setAttestOpen(true)}
-              className="ink-serif relative mt-3 flex w-full items-center gap-2 rounded-sm border border-[#ec5f45]/45 bg-[#ec5f45]/[0.08] px-3 py-2 text-left text-[12px] text-[#f08a72] hover:bg-[#ec5f45]/15"
+              className="ink-serif relative mt-2 flex w-full items-center gap-2 rounded-sm border max-sm:px-2 max-sm:py-1.5 max-sm:text-[11px] sm:mt-3 border-[#ec5f45]/45 bg-[#ec5f45]/[0.08] px-3 py-2 text-left text-[12px] text-[#f08a72] hover:bg-[#ec5f45]/15"
             >
               <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#ec5f45] opacity-60 motion-reduce:animate-none" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#ec5f45]" /></span>
-              Custodian changed. Not yet attested onchain.
+              <span className="sm:hidden">Not yet attested</span>
+              <span className="hidden sm:inline">Custodian changed. Not yet attested onchain.</span>
             </button>
           )}
         </InkPoster>
@@ -426,16 +429,16 @@ export function VaultExperience() {
           shown={started && hud}
           delay={0.25}
           label="Activity"
-          className="pointer-events-auto absolute bottom-[12.5rem] left-5 hidden w-[340px] md:block"
+          className="pointer-events-auto absolute bottom-[12.5rem] left-5 hidden w-[340px] md:block [@media(max-height:780px)]:hidden"
         >
           <ul className="ink-serif space-y-1.5 pb-3 pr-10">
-            {feed.slice(0, 4).map((f) => (
+            {feed.slice(0, 3).map((f) => (
               <li key={f.id} className={`lantern-in line-clamp-2 text-[12.5px] leading-snug ${INK[f.tone]}`}>
                 <span className="mr-1 text-[#ec5f45]" aria-hidden>・</span>
                 {f.text}
               </li>
             ))}
-            {history.data?.slice(0, Math.max(0, 4 - feed.length)).map((h) => (
+            {history.data?.slice(0, Math.max(0, 3 - feed.length)).map((h) => (
               <li key={h.signature} className="line-clamp-2 text-[12px] leading-snug text-[#a8987f]">
                 <span className="mr-1 text-[#ec5f45]" aria-hidden>・</span>
                 <span className="font-bold uppercase tracking-wider">{h.kind}</span> · {h.kind === "failed" ? h.error : h.summary}{" "}
@@ -473,9 +476,9 @@ export function VaultExperience() {
 
         {/* Attest panel: a wooden board that fades in. 認証 = verification. */}
         {attestOpen && (
-          <section className="pointer-events-auto absolute bottom-[12.5rem] left-1/2 w-[min(580px,calc(100vw-2rem))] -translate-x-1/2" aria-label="Attest with CRE">
+          <section className="pointer-events-auto absolute bottom-[9.5rem] left-1/2 w-[min(580px,calc(100vw-2rem))] -translate-x-1/2 sm:bottom-[12.5rem]" aria-label="Attest with CRE">
             <WoodBoard className="wood-fade-in">
-              <button type="button" onClick={() => setAttestOpen(false)} className="absolute -right-2 -top-3 rounded p-1 text-[#5b4127] hover:text-[#22150a]" aria-label="Close">
+              <button type="button" onClick={() => setAttestOpen(false)} className="absolute -right-4 -top-5 rounded p-3 text-[#5b4127] hover:text-[#22150a]" aria-label="Close">
                 <X className="h-4 w-4" aria-hidden />
               </button>
               <div className="flex items-center gap-4">
@@ -505,7 +508,7 @@ export function VaultExperience() {
 
       {/* Mint: a wooden shop sign. 営業中 = open for business, 準備中 = not open yet. */}
       <HangingSign open={mintOpen} rope={64} role="dialog" label={`Mint ${LANTERN.symbol}`} className="absolute right-[3vw] top-0 z-40 w-[min(420px,calc(100vw-2rem))]">
-        <button type="button" onClick={() => setMintOpen(false)} className="absolute -right-2 -top-3 rounded p-1 text-[#5b4127] hover:text-[#22150a]" aria-label="Close mint sign (Esc)">
+        <button type="button" onClick={() => setMintOpen(false)} className="absolute -right-4 -top-5 rounded p-3 text-[#5b4127] hover:text-[#22150a]" aria-label="Close mint sign (Esc)">
           <X className="h-4 w-4" aria-hidden />
         </button>
         <div className="text-center">
@@ -551,16 +554,17 @@ export function VaultExperience() {
 }
 
 function StatusPill({ s }: { s: LanternState | null }) {
-  if (!s) return <div className="glass h-9 w-48 animate-pulse rounded-full motion-reduce:animate-none" />;
+  if (!s) return <div className="glass h-9 w-20 animate-pulse rounded-full motion-reduce:animate-none sm:w-48" />;
   const on = s.mintingEnabled;
   return (
     <div
       role="status"
-      className={`glass hidden items-center gap-2 rounded-full px-4 py-2 font-mono text-[11px] tracking-[0.25em] sm:flex ${on ? "text-amber-200" : "lantern-alarm text-red-300"}`}
+      className={`glass flex items-center gap-2 rounded-full px-3 py-2 font-mono text-[10px] tracking-[0.2em] sm:px-4 sm:text-[11px] sm:tracking-[0.25em] ${on ? "text-amber-200" : "lantern-alarm text-red-300"}`}
     >
       <span className={`h-2 w-2 rounded-full ${on ? "bg-amber-300 shadow-[0_0_10px_rgba(252,211,77,0.9)]" : "bg-red-400 shadow-[0_0_12px_rgba(248,113,113,0.95)]"}`} />
-      {on ? "MINTING ENABLED" : "MINTING PAUSED"}
-      {!on && <span className="max-w-[280px] truncate text-[10px] normal-case tracking-normal text-red-200/80">{s.blockers.join(" · ")}</span>}
+      <span className="sm:hidden">{on ? "OPEN" : "PAUSED"}</span>
+      <span className="hidden sm:inline">{on ? "MINTING ENABLED" : "MINTING PAUSED"}</span>
+      {!on && <span className="hidden max-w-[280px] truncate text-[10px] normal-case tracking-normal text-red-200/80 md:inline">{s.blockers.join(" · ")}</span>}
     </div>
   );
 }
