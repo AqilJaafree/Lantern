@@ -4,7 +4,11 @@ export const CLUSTER = "devnet" as const;
 /** IssuerConfig.minter set to this (the default pubkey) means any wallet may mint. */
 export const OPEN_MINTER = "11111111111111111111111111111111";
 
-export const SOLANA_RPC = process.env.NEXT_PUBLIC_SOLANA_RPC ?? "https://api.devnet.solana.com";
+/** Browser RPC (wallet + mint). A different provider from the server's so they don't share a rate limit. */
+export const SOLANA_RPC = process.env.NEXT_PUBLIC_SOLANA_RPC ?? "https://solana-devnet.api.onfinality.io/public";
+
+/** Server-side RPC for /api routes. */
+export const SOLANA_RPC_SERVER = process.env.SOLANA_RPC ?? "https://api.devnet.solana.com";
 
 export const LANTERN = {
   programId: "CMo46d7niK6id7f8vUR25zQjKr77ykvKoukDeUEKCXuh",

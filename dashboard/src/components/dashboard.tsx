@@ -32,8 +32,8 @@ function usePoll<T>(url: string, intervalMs: number) {
 }
 
 export function Dashboard() {
-  const state = usePoll<LanternState>("/api/state", 4000);
-  const history = usePoll<HistoryItem[]>("/api/history", 15000);
+  const state = usePoll<LanternState>("/api/state", 10000);
+  const history = usePoll<HistoryItem[]>("/api/history", 30000);
   const reloadAll = () => {
     state.reload();
     history.reload();

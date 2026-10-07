@@ -9,6 +9,19 @@ import { truncate } from "@/lib/format";
 import { PROGRAM_ERRORS, buildMintInstructions } from "@/lib/mint";
 import { ExtLink, Panel, buttonClass } from "./ui";
 
+/** Public Devnet RPCs rate-limit bursts; retry a read a few times with backoff. */
+async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (i >= tries - 1 || !/429|rate limit|Too many requests/i.test(msg)) throw e;
+      await new Promise((r) => setTimeout(r, 800 * 2 ** i));
+    }
+  }
+}
+
 type Status =
   | { kind: "idle" }
   | { kind: "signing" }
@@ -34,16 +47,16 @@ export function MintConsole({ minter, onDone }: { minter?: string; onDone: () =>
     setStatus({ kind: "signing" });
     try {
       const raw = BigInt(Math.round(parsed * 10 ** LANTERN.decimals));
-      const latest = await connection.getLatestBlockhash("confirmed");
+      const latest = await withRetry(() => connection.getLatestBlockhash("confirmed"));
       const tx = new Transaction({ feePayer: publicKey, ...latest }).add(...buildMintInstructions(publicKey, raw));
       // Skip preflight so a rejected mint still lands onchain with an explorer link (PRD demo beat).
       const sig = await sendTransaction(tx, connection, { skipPreflight: true });
       setStatus({ kind: "confirming", sig });
-      const res = await connection.confirmTransaction({ signature: sig, ...latest }, "confirmed");
+      const res = await withRetry(() => connection.confirmTransaction({ signature: sig, ...latest }, "confirmed"));
       if (!res.value.err) {
         setStatus({ kind: "success", sig });
       } else {
-        const landed = await connection.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+        const landed = await withRetry(() => connection.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 }));
         const code = landed?.meta?.logMessages?.join("\n").match(/Error Code: (\w+)/)?.[1] ?? "TransactionFailed";
         setStatus({ kind: "failed", sig, code, message: PROGRAM_ERRORS[code] ?? "The transaction failed onchain." });
       }

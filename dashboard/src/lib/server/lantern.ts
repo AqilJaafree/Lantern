@@ -3,10 +3,10 @@ import { BorshAccountsCoder, BorshCoder, type Idl } from "@coral-xyz/anchor";
 import { TOKEN_2022_PROGRAM_ID, getMint, getScaledUiAmountConfig } from "@solana/spl-token";
 import { Connection, PublicKey, type VersionedTransactionResponse } from "@solana/web3.js";
 import idl from "@/lib/lantern-idl.json";
-import { FORWARDERS, LANTERN, SEPOLIA, SOLANA_RPC } from "@/lib/config";
+import { FORWARDERS, LANTERN, SEPOLIA, SOLANA_RPC_SERVER } from "@/lib/config";
 import type { Health, HistoryItem, LanternState } from "@/lib/types";
 
-const connection = new Connection(SOLANA_RPC, "confirmed");
+const connection = new Connection(SOLANA_RPC_SERVER, "confirmed");
 const accounts = new BorshAccountsCoder(idl as Idl);
 const coder = new BorshCoder(idl as Idl);
 
