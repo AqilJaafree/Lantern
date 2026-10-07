@@ -1,26 +1,13 @@
 "use client";
 
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Transaction } from "@solana/web3.js";
 import { useState } from "react";
 import { LANTERN, OPEN_MINTER, explorerTx } from "@/lib/config";
 import { truncate } from "@/lib/format";
 import { PROGRAM_ERRORS, buildMintInstructions } from "@/lib/mint";
 import { ExtLink, Panel, buttonClass } from "./ui";
-
-/** Public Devnet RPCs rate-limit bursts; retry a read a few times with backoff. */
-async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
-  for (let i = 0; ; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (i >= tries - 1 || !/429|rate limit|Too many requests/i.test(msg)) throw e;
-      await new Promise((r) => setTimeout(r, 800 * 2 ** i));
-    }
-  }
-}
+import { WalletButton } from "./wallet-button";
 
 type Status =
   | { kind: "idle" }
@@ -29,9 +16,18 @@ type Status =
   | { kind: "success"; sig: string }
   | { kind: "failed"; sig?: string; code: string; message: string };
 
-export function MintConsole({ minter, onDone }: { minter?: string; onDone: () => void }) {
+export function MintConsole({
+  minter,
+  blockers = [],
+  onDone,
+}: {
+  minter?: string;
+  /** Why minting would be rejected right now (stale attestation, paused, …). */
+  blockers?: string[];
+  onDone: () => void;
+}) {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, sendTransaction, signTransaction } = useWallet();
   const [amount, setAmount] = useState("1");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -41,27 +37,60 @@ export function MintConsole({ minter, onDone }: { minter?: string; onDone: () =>
   const open = minter === OPEN_MINTER;
   const notMinter = publicKey && minter && !open && publicKey.toBase58() !== minter;
 
+  /** Poll our server for the signature (up to ~90s). The browser itself makes no
+   * Solana RPC calls, so a rate-limited public RPC can't break minting. */
+  async function waitForSignature(sig: string): Promise<{ failed: boolean; code?: string }> {
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const res = await fetch(`/api/tx?sig=${sig}`, { cache: "no-store" });
+      if (!res.ok) continue;
+      const body = await res.json();
+      if (body.status === "confirmed" || body.status === "finalized") return body;
+    }
+    throw new Error(`Transaction ${sig} was not seen on Devnet within 90s. It may have been dropped; try again.`);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!publicKey || invalid) return;
     setStatus({ kind: "signing" });
     try {
       const raw = BigInt(Math.round(parsed * 10 ** LANTERN.decimals));
-      const latest = await withRetry(() => connection.getLatestBlockhash("confirmed"));
+      const bh = await fetch("/api/blockhash", { cache: "no-store" });
+      const latest = await bh.json();
+      if (!bh.ok) throw new Error(latest.error ?? "Could not get a recent blockhash");
       const tx = new Transaction({ feePayer: publicKey, ...latest }).add(...buildMintInstructions(publicKey, raw));
-      // Skip preflight so a rejected mint still lands onchain with an explorer link (PRD demo beat).
-      const sig = await sendTransaction(tx, connection, { skipPreflight: true });
+      // The wallet only signs; our server broadcasts through its Devnet RPC (and reports
+      // exactly which cluster the wallet signed for if the blockhash isn't Devnet's).
+      let sig: string;
+      if (signTransaction) {
+        const signed = await signTransaction(tx);
+        const res = await fetch("/api/send", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tx: btoa(String.fromCharCode(...signed.serialize())), blockhash: latest.blockhash }),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          setStatus({ kind: "failed", code: body.code ?? "SendFailed", message: body.error ?? "Send failed" });
+          return;
+        }
+        sig = body.signature;
+      } else {
+        sig = await sendTransaction(tx, connection, { skipPreflight: true, maxRetries: 5 });
+      }
       setStatus({ kind: "confirming", sig });
-      const res = await withRetry(() => connection.confirmTransaction({ signature: sig, ...latest }, "confirmed"));
-      if (!res.value.err) {
+      const result = await waitForSignature(sig);
+      if (!result.failed) {
         setStatus({ kind: "success", sig });
       } else {
-        const landed = await withRetry(() => connection.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 }));
-        const code = landed?.meta?.logMessages?.join("\n").match(/Error Code: (\w+)/)?.[1] ?? "TransactionFailed";
+        const code = result.code ?? "TransactionFailed";
         setStatus({ kind: "failed", sig, code, message: PROGRAM_ERRORS[code] ?? "The transaction failed onchain." });
       }
       onDone();
     } catch (err) {
+      console.error("[lantern] mint failed", err);
       const msg = err instanceof Error ? err.message : String(err);
       // A wallet rejection is a user choice, not an error.
       if (/reject|denied|cancel/i.test(msg)) setStatus({ kind: "idle" });
@@ -83,7 +112,7 @@ export function MintConsole({ minter, onDone }: { minter?: string; onDone: () =>
               </>
             )}
           </p>
-          <WalletMultiButton />
+          <WalletButton />
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-3">
@@ -109,9 +138,15 @@ export function MintConsole({ minter, onDone }: { minter?: string; onDone: () =>
             <button type="submit" disabled={busy || invalid} className={`${buttonClass} bg-primary text-primary-foreground hover:bg-primary/90`}>
               {status.kind === "signing" ? "Approve in wallet…" : status.kind === "confirming" ? "Confirming…" : "Mint"}
             </button>
-            <WalletMultiButton />
+            <WalletButton />
           </div>
           {invalid && <p className="text-xs text-destructive">Enter an amount greater than 0.</p>}
+          {blockers.length > 0 && (
+            <p className="text-xs text-warning" role="status">
+              Minting will be rejected onchain right now: {blockers.join(" · ")}.
+              {blockers.some((b) => b.startsWith("Attestation stale")) && " Run a fresh attestation (CRE or relayer), then mint within 3 minutes."}
+            </p>
+          )}
           {open && (
             <p className="text-xs text-muted-foreground">
               Open minting (demo mode): mints go to your wallet. The cap, freshness and pause checks still apply.

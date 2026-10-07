@@ -3,10 +3,35 @@ import { BorshAccountsCoder, BorshCoder, type Idl } from "@coral-xyz/anchor";
 import { TOKEN_2022_PROGRAM_ID, getMint, getScaledUiAmountConfig } from "@solana/spl-token";
 import { Connection, PublicKey, type VersionedTransactionResponse } from "@solana/web3.js";
 import idl from "@/lib/lantern-idl.json";
-import { FORWARDERS, LANTERN, SEPOLIA, SOLANA_RPC_SERVER } from "@/lib/config";
+import { EVM_GATES, FORWARDERS, LANTERN, SEPOLIA, SOLANA_RPC_SERVER } from "@/lib/config";
 import type { Health, HistoryItem, LanternState } from "@/lib/types";
 
-const connection = new Connection(SOLANA_RPC_SERVER, "confirmed");
+/** Primary, then fallback on rate limits: public Devnet RPCs throttle per IP. */
+const RPCS = [SOLANA_RPC_SERVER, "https://solana-devnet.api.onfinality.io/public"]
+  .filter((u, i, all) => all.indexOf(u) === i)
+  .map((u) => new Connection(u, { commitment: "confirmed", disableRetryOnRateLimit: true }));
+
+const isRateLimit = (e: unknown) => /429|rate limit|Too many requests/i.test(e instanceof Error ? e.message : String(e));
+
+/** Circuit breaker: after a 429, leave that RPC alone for a while so the
+ * per-IP limit can recover instead of being extended by every poll. */
+const COOLDOWN_MS = 30_000;
+const coolUntil = new Map<Connection, number>();
+
+async function withRpc<T>(fn: (c: Connection) => Promise<T>): Promise<T> {
+  let last: unknown = new Error("All Devnet RPCs are rate-limited; retrying shortly");
+  for (const c of RPCS) {
+    if ((coolUntil.get(c) ?? 0) > Date.now()) continue;
+    try {
+      return await fn(c);
+    } catch (e) {
+      last = e;
+      if (!isRateLimit(e)) throw e;
+      coolUntil.set(c, Date.now() + COOLDOWN_MS);
+    }
+  }
+  throw last;
+}
 const accounts = new BorshAccountsCoder(idl as Idl);
 const coder = new BorshCoder(idl as Idl);
 
@@ -28,7 +53,7 @@ function decodeEvents(logs: string[]) {
 const SOLANA_DECIMALS = 6;
 
 /** Fetch with a timeout so one slow upstream can't hang the dashboard. */
-async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 6000) {
+async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 10000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -78,12 +103,73 @@ async function readEvmSupply(): Promise<LanternState["evm"]> {
 
 const big = (v: unknown) => BigInt(String(v));
 
+async function ethCall(rpc: string, headers: Record<string, string>, to: string, data: string): Promise<bigint> {
+  const res = await fetchWithTimeout(rpc, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to, data }, "latest"] }),
+  });
+  const body = await res.json();
+  if (typeof body.result !== "string") throw new Error(body.error?.message ?? `HTTP ${res.status}`);
+  return BigInt(body.result === "0x" ? 0 : body.result);
+}
+
+/** Lantern gates on EVM chains: Sepolia via NOWNodes, Robinhood testnet via its RPC. */
+async function readGates(): Promise<LanternState["gates"]> {
+  const now = Math.floor(Date.now() / 1000);
+  return Promise.all(
+    EVM_GATES.map(async (g) => {
+      const base = { name: g.name, label: g.label, chainId: g.chainId, gate: g.gate, via: g.via, explorer: g.explorer };
+      if (!g.gate) return { ...base, supply: null, cap: null, observedAt: null, fresh: false, error: "Gate not deployed yet" };
+      const key = process.env.NOWNODES_API_KEY;
+      // Sepolia: NOWNodes first, public RPC as a labeled fallback. Robinhood: its public RPC.
+      const sources: [string, Record<string, string>, string][] =
+        g.name === "sepolia" && key
+          ? [[SEPOLIA.rpc, { "api-key": key }, "NOWNodes"], [g.publicRpc, {}, "public RPC (NOWNodes timed out)"]]
+          : [[g.publicRpc, {}, g.via]];
+      let last: unknown;
+      for (const [rpc, headers, via] of sources) {
+        try {
+          const [supply, cap, observedAt] = await Promise.all([
+            ethCall(rpc, headers, g.gate, "0x18160ddd"), // totalSupply()
+            ethCall(rpc, headers, g.gate, "0x355274ea"), // cap()
+            ethCall(rpc, headers, g.gate, "0x9be7dadb"), // observedAt()
+          ]);
+          const obs = Number(observedAt);
+          return { ...base, via, supply: supply.toString(), cap: cap.toString(), observedAt: obs, fresh: obs > 0 && now - obs <= 180 };
+        } catch (e) {
+          last = e;
+        }
+      }
+      return { ...base, supply: null, cap: null, observedAt: null, fresh: false, error: last instanceof Error ? last.message : "read failed" };
+    }),
+  );
+}
+
+let lastState: LanternState | null = null;
+let inflight: Promise<LanternState> | null = null;
+
+/** Cached for 3s, concurrent callers share one RPC round, and on RPC failure the
+ * last good state is served (flagged `cached`) instead of an error. */
 export async function readState(): Promise<LanternState> {
-  const [infos, mint, custodian, evm] = await Promise.all([
-    connection.getMultipleAccountsInfo([new PublicKey(LANTERN.issuerConfig), new PublicKey(LANTERN.attestation)]),
-    getMint(connection, new PublicKey(LANTERN.mint), "confirmed", TOKEN_2022_PROGRAM_ID),
+  if (lastState && Date.now() - lastState.fetchedAt < 3000) return lastState;
+  inflight ??= loadState()
+    .then((s) => (lastState = s))
+    .catch((e) => {
+      if (lastState) return { ...lastState, cached: true };
+      throw e;
+    })
+    .finally(() => (inflight = null));
+  return inflight;
+}
+
+async function loadState(): Promise<LanternState> {
+  const [infos, mint, custodian, evm, gates] = await Promise.all([
+    withRpc((c) => c.getMultipleAccountsInfo([new PublicKey(LANTERN.issuerConfig), new PublicKey(LANTERN.attestation)])),
+    withRpc((c) => getMint(c, new PublicKey(LANTERN.mint), "confirmed", TOKEN_2022_PROGRAM_ID)),
     readCustodian(),
     readEvmSupply(),
+    readGates(),
   ]);
   const [cfgInfo, attInfo] = infos;
   if (!cfgInfo || !attInfo) throw new Error("Lantern accounts not found on Devnet");
@@ -99,7 +185,8 @@ export async function readState(): Promise<LanternState> {
 
   const supply = mint.supply;
   const evmSupply = "supply" in evm ? BigInt(evm.supply) : 0n;
-  const total = supply + evmSupply;
+  const gatedSupply = gates.reduce((a, g) => a + (g.supply ? BigInt(g.supply) : 0n), 0n);
+  const total = supply + evmSupply + gatedSupply;
 
   const live = custodian !== null;
   const shares = live ? BigInt(custodian.microShares) : big(att.shares_held);
@@ -142,6 +229,7 @@ export async function readState(): Promise<LanternState> {
     },
     custodian,
     evm,
+    gates,
     backing: {
       backed: backed.toString(),
       basis: live ? "custodian (live, mock)" : "last attestation",
@@ -166,7 +254,7 @@ async function getTransactionsCached(signatures: string[], maxNew = 3) {
   const missing = signatures.filter((s) => !txCache.has(s)).slice(0, maxNew);
   for (const sig of missing) {
     try {
-      const tx = await connection.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+      const tx = await withRpc((c) => c.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" }));
       if (tx) txCache.set(sig, tx);
     } catch {
       break; // rate limited: stop and retry on the next poll
@@ -176,7 +264,7 @@ async function getTransactionsCached(signatures: string[], maxNew = 3) {
 }
 
 export async function readHistory(limit = 20): Promise<HistoryItem[]> {
-  const sigs = await connection.getSignaturesForAddress(new PublicKey(LANTERN.issuerConfig), { limit });
+  const sigs = await withRpc((c) => c.getSignaturesForAddress(new PublicKey(LANTERN.issuerConfig), { limit }));
   const txs = await getTransactionsCached(sigs.map((s) => s.signature));
 
   return sigs.flatMap((s, i): HistoryItem[] => (txs[i] ? [toItem(s, txs[i]!)] : []));
@@ -247,4 +335,82 @@ function toItem(
     }
     return { ...base, kind: "pause", summary: logs.some((l) => l.includes("SetCreConfig")) ? "CRE config updated" : "Config change" };
   }
+}
+
+/** Finalized blockhash: every Devnet node knows it, so the wallet's own RPC won't
+ * reject it as "not found"; still valid for ~45s+. Served by the server so the
+ * browser makes no Solana RPC calls (and can't be rate-limited by them). */
+export async function readBlockhash() {
+  return withRpc((c) => c.getLatestBlockhash("confirmed"));
+}
+
+/** Status of a signature, with the decoded Lantern error code if it failed. */
+export async function readTxStatus(sig: string) {
+  const st = (await withRpc((c) => c.getSignatureStatuses([sig], { searchTransactionHistory: true }))).value[0];
+  const status = st?.confirmationStatus ?? null;
+  if (!st || !st.err || (status !== "confirmed" && status !== "finalized")) {
+    return { status, failed: false as const };
+  }
+  const tx = await withRpc((c) => c.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 }));
+  const code = tx?.meta?.logMessages?.join("\n").match(/Error Code: (\w+)/)?.[1] ?? "TransactionFailed";
+  return { status, failed: true as const, code };
+}
+
+const OTHER_CLUSTERS: [string, Connection][] = [
+  ["MAINNET", new Connection("https://api.mainnet-beta.solana.com", "confirmed")],
+  ["TESTNET", new Connection("https://api.testnet.solana.com", "confirmed")],
+];
+
+export class SendError extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+  }
+}
+
+/** Broadcast a wallet-signed transaction through our Devnet RPC. Checks which
+ * cluster its blockhash belongs to first, so a wallet signing for the wrong
+ * network gets a definite answer instead of a silent drop. */
+export async function sendSigned(base64: string, expectedBlockhash?: string): Promise<string> {
+  const raw = Buffer.from(base64, "base64");
+  const { Transaction } = await import("@solana/web3.js");
+  const tx = Transaction.from(raw);
+  const bh = tx.recentBlockhash;
+  if (!bh) throw new SendError("NoBlockhash", "Signed transaction has no blockhash.");
+
+  const onDevnet = (await withRpc((c) => c.isBlockhashValid(bh, { commitment: "processed" }))).value;
+  if (!onDevnet) {
+    const replaced = expectedBlockhash !== undefined && bh !== expectedBlockhash;
+    for (const [name, conn] of OTHER_CLUSTERS) {
+      const valid = await conn.isBlockhashValid(bh, { commitment: "processed" }).then((r) => r.value).catch(() => false);
+      if (valid) {
+        throw new SendError(
+          `WalletOn${name[0]}${name.slice(1).toLowerCase()}`,
+          `Your wallet replaced the blockhash with a Solana ${name} one, so it is signing for ${name}, not Devnet. In Phantom: Settings → Developer Settings → Testnet Mode → choose "Solana Devnet" (not Testnet), then disconnect and reconnect this site.`,
+        );
+      }
+    }
+    throw new SendError(
+      replaced ? "UnknownBlockhash" : "BlockhashExpired",
+      replaced
+        ? "Your wallet replaced the blockhash with one that is not valid on Devnet, Testnet or Mainnet. Disconnect this site in Phantom (Settings → Connected Apps), reconnect on Solana Devnet, and try again."
+        : "The blockhash expired before the wallet approved. Mint again and approve within ~45s.",
+    );
+  }
+
+  let sig: string;
+  try {
+    sig = await withRpc((c) => c.sendRawTransaction(raw, { preflightCommitment: "processed", maxRetries: 0 }));
+  } catch (e) {
+    // A Lantern program error (stale, over cap, paused): send anyway so the rejection
+    // lands onchain with an explorer link (PRD demo beat).
+    if (!/custom program error/i.test(e instanceof Error ? e.message : String(e))) throw e;
+    sig = await withRpc((c) => c.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }));
+  }
+  // Devnet drops transactions: rebroadcast a few times in the background.
+  let n = 0;
+  const timer = setInterval(() => {
+    if (++n > 10) return clearInterval(timer);
+    withRpc((c) => c.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 })).catch(() => {});
+  }, 2000);
+  return sig;
 }

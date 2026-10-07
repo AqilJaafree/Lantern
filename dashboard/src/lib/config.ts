@@ -34,6 +34,28 @@ export const SEPOLIA = {
   rpc: "https://eth-sepolia.nownodes.io",
 } as const;
 
+/** Lantern mint gates on EVM chains (evm/src/LanternGate.sol). gate = null until deployed. */
+export const EVM_GATES = [
+  {
+    name: "sepolia",
+    label: "Ethereum Sepolia",
+    chainId: 11155111,
+    gate: "0xE1e7c742E976c76982cDB1702B62471F84769AB2" as `0x${string}` | null,
+    via: "NOWNodes",
+    publicRpc: "https://ethereum-sepolia-rpc.publicnode.com",
+    explorer: "https://sepolia.etherscan.io",
+  },
+  {
+    name: "robinhood",
+    label: "Robinhood Chain Testnet",
+    chainId: 46630,
+    gate: (process.env.NEXT_PUBLIC_ROBINHOOD_GATE || null) as `0x${string}` | null,
+    via: "Robinhood RPC",
+    publicRpc: "https://rpc.testnet.chain.robinhood.com",
+    explorer: "https://explorer.testnet.chain.robinhood.com",
+  },
+] as const;
+
 export const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=${CLUSTER}`;
 export const explorerAddress = (addr: string) =>
   `https://explorer.solana.com/address/${addr}?cluster=${CLUSTER}`;

@@ -16,5 +16,12 @@
     "attestation": "DSezDRJyG6ZChmcpaig7fRhWjr3ehyoRmPWgQ9FS74wf",
     "mint": "7yupUQoWo5R7T6tvk7dCVjN4vXB94vSmSUHWeG5b4zM9",
     "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-  }
+  },
+  "gates": [
+    {
+      "name": "sepolia",
+      "address": "0xE1e7c742E976c76982cDB1702B62471F84769AB2",
+      "chainSelectorName": "ethereum-testnet-sepolia"
+    }
+  ]
 }

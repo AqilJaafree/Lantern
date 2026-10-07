@@ -1,0 +1,24 @@
+{
+  "weights": { "solana": 2, "sepolia": 1, "robinhood": 1 },
+  "evmAttestor": "0xC06ec14e19bcC9b317586b013F370eb0D4571555",
+  "evm": {
+    "sepolia": {
+      "chainId": 11155111,
+      "gate": "0xE1e7c742E976c76982cDB1702B62471F84769AB2",
+      "rpc": "nownodes:https://eth-sepolia.nownodes.io",
+      "explorer": "https://sepolia.etherscan.io"
+    },
+    "robinhood": {
+      "chainId": 46630,
+      "gate": null,
+      "rpc": "https://rpc.testnet.chain.robinhood.com",
+      "explorer": "https://explorer.testnet.chain.robinhood.com"
+    }
+  },
+  "legacy": {
+    "note": "Original ungated Sepolia mirror (monitored only); its supply is counted before allocating",
+    "chainId": 11155111,
+    "token": "0xb41e1D98421BbD79d6D094e48DE9BFE01393e54C",
+    "decimals": 18
+  }
+}

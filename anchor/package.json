@@ -10,13 +10,15 @@
     "examples": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/examples.ts",
     "set-cre-config": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/set-cre-config.ts",
     "demo": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/demo.ts",
-    "set-minter": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/set-minter.ts"
+    "set-minter": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=$HOME/.config/solana/id.json ts-node -P tsconfig.json scripts/set-minter.ts",
+    "relay-all": "ts-node -P tsconfig.json --transpile-only scripts/relay-all.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "viem": "^2.57.3"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.0",

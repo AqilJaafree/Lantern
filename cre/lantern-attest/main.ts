@@ -14,10 +14,13 @@ import {
   EVMClient,
   HTTPClient,
   LAST_FINALIZED_BLOCK_NUMBER,
+  LATEST_BLOCK_NUMBER,
   Runner,
   SolanaClient,
   SolanaTxStatus,
   bytesToHex,
+  consensusMedianAggregation,
+  bytesToBase64,
   encodeCallMsg,
   getNetwork,
   handler,
@@ -45,6 +48,19 @@ const configSchema = z.object({
     decimals: z.number().int().min(0).max(36),
     sampleSupplyMicro: z.string().regex(/^\d+$/),
   }),
+  /** Lantern gates on EVM chains. Their attested caps are already allocated, so Solana
+   * only gets what is left: cap_solana = backed − legacy − Σ gate caps. */
+  gates: z
+    .array(
+      z.object({
+        name: z.string(),
+        address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+        /** Read with EVMClient when CRE supports the chain… */
+        chainSelectorName: z.string().optional(),
+        /** …otherwise with an HTTP eth_call (e.g. Robinhood Chain testnet). */
+        rpcUrl: z.string().regex(/^https?:\/\//).optional(),
+      }),
+    ),
   solana: z.object({
     clusterId: z.number().int().min(0).max(255),
     forwarderState: z.string(),
@@ -102,6 +118,41 @@ const readEvmTotalSupply = (runtime: Runtime<Config>): bigint => {
   return decodeFunctionResult({ abi: erc20Abi, functionName: "totalSupply", data: bytesToHex(reply.data) });
 };
 
+// ---------- Lantern gate caps (per-chain allocations) ----------
+
+const gateAbi = parseAbi(["function cap() view returns (uint256)"]);
+const CAP_SELECTOR = "0x355274ea"; // cap()
+
+/** Current attested cap of a Lantern gate via EVMClient (latest block: caps change every round). */
+const readGateCapEvm = (runtime: Runtime<Config>, chainSelectorName: string, address: string): bigint => {
+  const network = getNetwork({ chainFamily: "evm", chainSelectorName });
+  if (!network) throw new Error(`Unknown selector: ${chainSelectorName}`);
+  const reply = new EVMClient(network.chainSelector.selector)
+    .callContract(runtime, {
+      call: encodeCallMsg({ from: zeroAddress, to: address as Address, data: encodeFunctionData({ abi: gateAbi, functionName: "cap" }) }),
+      blockNumber: LATEST_BLOCK_NUMBER,
+    })
+    .result();
+  return decodeFunctionResult({ abi: gateAbi, functionName: "cap", data: bytesToHex(reply.data) });
+};
+
+/** Same read over HTTP JSON-RPC, for chains without a CRE selector (Robinhood testnet). */
+const fetchGateCapHttp = (sender: HTTPSendRequester, rpcUrl: string, address: string): bigint => {
+  const payload = { jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: address, data: CAP_SELECTOR }, "latest"] };
+  const res = sender
+    .sendRequest({
+      url: rpcUrl,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: bytesToBase64(new TextEncoder().encode(JSON.stringify(payload))),
+      cacheSettings: { store: false },
+    })
+    .result();
+  if (!ok(res)) throw new Error(`gate RPC HTTP ${res.statusCode}`);
+  const body = z.object({ result: z.string().regex(/^0x[0-9a-fA-F]*$/) }).parse(json(res));
+  return BigInt(body.result === "0x" ? "0x0" : body.result);
+};
+
 /** Normalize to Solana's 6 decimals, rounding UP so rounding never creates Solana capacity. */
 export const toMicro = (raw: bigint, decimals: number): bigint => {
   if (decimals <= SOLANA_DECIMALS) return raw * 10n ** BigInt(SOLANA_DECIMALS - decimals);
@@ -155,6 +206,17 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
     otherChainSupply = BigInt(cfg.evm.sampleSupplyMicro);
     evmSource = "SAMPLE (no EVM token configured)";
   }
+
+  // Other chains' gates already hold their allocations: subtract their caps too.
+  let gateCaps = 0n;
+  for (const g of cfg.gates) {
+    const cap = g.chainSelectorName
+      ? readGateCapEvm(runtime, g.chainSelectorName, g.address)
+      : http.sendRequest(runtime, fetchGateCapHttp, consensusMedianAggregation<bigint>())(g.rpcUrl ?? "", g.address).result();
+    runtime.log(`gate ${g.name} ${g.address} allocated cap(micro)=${cap}`);
+    gateCaps += cap;
+  }
+  otherChainSupply += gateCaps;
 
   const sharesHeld = BigInt(holdings.microShares);
   const splitNum = holdings.splitNum;

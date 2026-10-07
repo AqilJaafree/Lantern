@@ -37,7 +37,7 @@ staging-settings:
     - chain-name: ethereum-testnet-sepolia
       url: https://eth-sepolia.nownodes.io/${CRE_NOWNODES_API_KEY}
     - chain-name: solana-devnet
-      url: https://api.devnet.solana.com
+      url: ${CRE_SOLANA_DEVNET_RPC}
 
 # ==========================================================================
 production-settings:
@@ -46,5 +46,5 @@ production-settings:
     - chain-name: ethereum-testnet-sepolia
       url: https://eth-sepolia.nownodes.io/${CRE_NOWNODES_API_KEY}
     - chain-name: solana-devnet
-      url: https://api.devnet.solana.com
+      url: ${CRE_SOLANA_DEVNET_RPC}
 

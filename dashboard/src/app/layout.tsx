@@ -13,8 +13,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    // suppressHydrationWarning: browser extensions (e.g. Grammarly) add attributes to <html>/<body> before React loads.
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

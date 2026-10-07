@@ -1,17 +1,21 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Inbox, PauseCircle, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LANTERN, OPEN_MINTER, SEPOLIA, etherscanAddress, explorerAddress, explorerTx } from "@/lib/config";
 import { ago, formatAmount, formatRatio, truncate } from "@/lib/format";
 import type { HistoryItem, LanternState } from "@/lib/types";
 import { DemoControls } from "./demo-controls";
+import { EvmMintConsole } from "./evm-mint-console";
 import { MintConsole } from "./mint-console";
 import { ExtLink, Panel, Skeleton, Stat, buttonClass } from "./ui";
 
+/** Poll an API route; after errors, back off (×2 per failure, up to 60s) so a
+ * rate-limited RPC can recover. The first success restores the normal interval. */
 function usePoll<T>(url: string, intervalMs: number) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const failures = useRef(0);
   const load = useCallback(async () => {
     try {
       const res = await fetch(url, { cache: "no-store" });
@@ -19,14 +23,26 @@ function usePoll<T>(url: string, intervalMs: number) {
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
       setData(body);
       setError(null);
+      failures.current = 0;
     } catch (e) {
+      failures.current += 1;
       setError(e instanceof Error ? e.message : "Request failed");
     }
   }, [url]);
   useEffect(() => {
-    load();
-    const id = setInterval(load, intervalMs);
-    return () => clearInterval(id);
+    let timer: ReturnType<typeof setTimeout>;
+    let stopped = false;
+    const tick = async () => {
+      await load();
+      if (stopped) return;
+      const delay = failures.current ? Math.min(60_000, intervalMs * 2 ** failures.current) : intervalMs;
+      timer = setTimeout(tick, delay);
+    };
+    tick();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, [load, intervalMs]);
   return { data, error, reload: load };
 }
@@ -71,9 +87,11 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <MintConsole minter={s?.solana.minter} onDone={reloadAll} />
+        <MintConsole minter={s?.solana.minter} blockers={s?.blockers} onDone={reloadAll} />
         <DemoControls onDone={reloadAll} />
       </div>
+
+      <EvmMintConsole gates={s?.gates} onDone={reloadAll} />
 
       <HistoryPanel items={history.data} error={history.error} onRetry={history.reload} />
 
@@ -108,6 +126,7 @@ function StatusBanner({ s }: { s: LanternState | null }) {
         </div>
       </div>
       <p className="min-w-0 break-words font-mono text-xs tabular-nums text-muted-foreground">
+        {s.cached && <span className="text-warning">RPC busy · last snapshot · </span>}
         Last attestation {ago(s.attestation.ageSecs)} · window {s.solana.stalenessSecs}s · nonce {s.attestation.nonce}
       </p>
     </div>
@@ -153,7 +172,12 @@ function SupplyPanel({ s }: { s: LanternState | null }) {
         <dl className="space-y-3">
           <Row label="Solana Devnet" tag="GATED" tagClass="bg-success/15 text-success" value={formatAmount(s.solana.supply)}
             sub={s.solana.uiMultiplier && s.solana.uiMultiplier !== 1 ? `UI multiplier ×${s.solana.uiMultiplier}` : "Token-2022, mint authority = Lantern PDA"} />
-          <Row label="Ethereum Sepolia" tag="MONITORED" tagClass="bg-info/15 text-info"
+          {s.gates.map((g) => (
+            <Row key={g.name} label={g.label} tag="GATED" tagClass="bg-success/15 text-success"
+              value={g.supply ? formatAmount(g.supply) : "—"}
+              sub={g.error ? g.error : `cap ${formatAmount(g.cap ?? "0")} · ${g.fresh ? "fresh" : "stale"} · via ${g.via}`} />
+          ))}
+          <Row label="Sepolia legacy mirror" tag="MONITORED" tagClass="bg-info/15 text-info"
             value={evmOk ? formatAmount((s.evm as { supply: string }).supply) : "—"}
             sub={evmOk ? (s.evm as { source: string }).source : `Unavailable: ${(s.evm as { error: string }).error}`} />
           <div className="border-t border-border pt-3">
@@ -261,7 +285,11 @@ function ErrorBox({ title, detail, onRetry }: { title: string; detail: string; o
         <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" aria-hidden />
         <div>
           <p className="text-sm font-medium text-destructive">{title}</p>
-          <p className="text-xs text-muted-foreground">{detail}. Devnet RPC can be slow; try again.</p>
+          <p className="text-xs text-muted-foreground">
+            {/429|rate.?limit|Too Many Requests/i.test(detail)
+              ? "The public Devnet RPC is rate-limiting this machine. Retrying automatically with backoff; a dedicated RPC key (SOLANA_RPC) avoids this."
+              : `${detail}. Devnet RPC can be slow; try again.`}
+          </p>
         </div>
       </div>
       <button type="button" onClick={onRetry} className={`${buttonClass} border border-border bg-muted hover:bg-muted/70`}>Retry</button>
