@@ -6,6 +6,21 @@
 
 ---
 
+## 0. Build status (as shipped, 7 Oct 2026)
+
+| Area | Status |
+|------|--------|
+| Solana program S1–S8 | ✅ On Devnet, 27 tests. Added **S9 `on_report`** (CRE path) and `set_cre_config` |
+| CRE workflow C1–C6 | ✅ Native Solana write through the Keystone Forwarder; evidence is simulation plus `--broadcast` Devnet transactions. C7/C8 cut. DON deployment needs CRE Early Access |
+| NOWNodes N1, N3, N6 | ✅ Sepolia `totalSupply` (CRE `EVMClient` and dashboard); endpoint map in README. **N2 not possible:** NOWNodes has no Solana Devnet endpoint. N4/N5 cut |
+| Mock custodian M1–M3 | ✅ Plus `POST /set` and `/reset` for the demo script |
+| Dashboard D1–D6, D8 | ✅ Local; hosted URL pending. D7 is partial: splits appear in history, with no timeline marker |
+| Demo X1–X2 | ✅ `yarn demo`: the full scenario with CRE attestations, recorded in `anchor/deployments/devnet-demo-run.json` |
+
+The resolved open questions are in section 11. The README is the source of truth for evidence links.
+
+---
+
 ## 1. Overview
 
 Lantern is an enforcement layer for tokenized stocks. An issuer wires it into its mint flow, and from then on new tokens can only be minted if a fresh, signed attestation shows the custodian holds enough real shares to back them. If backing falls short, minting pauses automatically, onchain.
@@ -73,6 +88,7 @@ Priority: **P0** must ship, **P1** ship if time allows, **P2** roadmap only.
 | S5 | P0 | Auto-pause: `submit_attestation` sets `auto_paused = true` when `current_supply > max_supply` (shortfall) and clears **only** `auto_paused` when backing is restored. It never touches `admin_paused` |
 | S6 | P1 | `admin_pause` / `admin_unpause` by admin as manual override (sets/clears `admin_paused` only) |
 | S7 | P1 | Events emitted on attestation, mint, pause/unpause, and corporate action, so the dashboard can index them |
+| S9 | P0 | `on_report(metadata, report)`: CRE path. Callable only through the Keystone Forwarder CPI. Verifies the forwarder state (owner and address) and the forwarder authority PDA `["forwarder", state, lantern]`, plus the workflow owner and name in `metadata` against `CreConfig`, then applies the Borsh `AttestationReport` with exactly the same checks and effects as S2/S5/S8 (shared `apply_report`) |
 | S8 | P1 | Corporate action inside `submit_attestation`: when the report's `split_num/split_den` differs from the previous attestation, the program PDA (as Scaled UI Amount authority) updates the Token-2022 UI multiplier in the same transaction, so holder balances display post-split amounts |
 
 **Error codes** (surfaced verbatim in the mint console): `Unauthorized`, `InvalidSignature`, `StaleAttestation`, `ExceedsBacking`, `AutoPaused`, `AdminPaused`, `NonceReplay`, `TimestampRegression`, `FutureTimestamp`, `DomainMismatch`, `MaxSupplyMismatch`.
@@ -103,9 +119,9 @@ max_supply_solana = floor(shares_held × split_den / split_num) − ceil(supply_
 |----|-----|-------------|
 | C1 | P0 | Scheduled (cron) workflow that runs every 30–60 seconds in demo mode (confirm minimum cron interval in hour one) |
 | C2 | P0 | Step 1: call the mock custodian API for micro-shares held and the cumulative split factor |
-| C3 | P0 | Step 2: read token supply on each chain through NOWNodes (Solana plus one EVM chain) |
+| C3 | P0 | Step 2: read token supply on each chain through NOWNodes (Solana plus one EVM chain). *As built:* the Sepolia mirror's `totalSupply` via `EVMClient` (finalized block), with NOWNodes as the RPC. Solana supply is read onchain by the program itself, and CRE has no Solana reads yet |
 | C4 | P0 | Step 3: normalize decimals, compute total supply, backing ratio, and `max_supply_solana` |
-| C5 | P0 | Step 4: produce a signed report (fields in 5.3) and deliver it to the Solana program (see 5.3 for the delivery path) |
+| C5 | P0 | Step 4: produce a signed report (fields in 5.3) and deliver it to the Solana program (see 5.3 for the delivery path). *As built:* `SolanaClient.writeReport` through the Keystone Forwarder into `on_report` (S9) |
 | C6 | P0 | Capture CRE CLI simulation output (or deployment evidence) for submission |
 | C7 | P1 | Use Confidential Workflows for the custodian API credential |
 | C8 | P2 | Multi-signer quorum on the report |
@@ -115,13 +131,15 @@ max_supply_solana = floor(shares_held × split_den / split_num) − ceil(supply_
 | ID | Pri | Requirement |
 |----|-----|-------------|
 | N1 | P0 | Create a NOWNodes account and API key; all chain reads go through it |
-| N2 | P0 | Solana RPC: token supply, mint account state, transaction confirmation |
+| N2 | P0 | Solana RPC: token supply, mint account state, transaction confirmation. *Not possible:* NOWNodes serves Solana mainnet and testnet only, not Devnet, so Devnet uses the public RPC. Disclosed in the README |
 | N3 | P0 | EVM RPC: ERC-20 `totalSupply` and `decimals` for the mirrored stock token |
 | N4 | P1 | WebSocket subscription for near-real-time supply changes feeding the dashboard |
 | N5 | P1 | Optional third chain (e.g. Bitcoin or another EVM) read as a stretch for the multichain story |
 | N6 | P0 | README table mapping each endpoint to the component that uses it |
 
 > Confirm in hour one which networks NOWNodes exposes for testnets. If the EVM side must be mainnet, use a read-only existing token's supply as the second-chain data point and label it clearly.
+>
+> *Resolved:* NOWNodes serves Ethereum Sepolia (`eth-sepolia.nownodes.io`), so we deployed our own Sepolia mirror ERC-20 (`0xb41e…e54C`) as the second chain. That avoided reading an unrelated mainnet token.
 
 ### 4.4 Mock custodian API
 
@@ -155,23 +173,27 @@ max_supply_solana = floor(shares_held × split_den / split_num) − ceil(supply_
 
 ## 5. Architecture
 
-### 5.1 Data flow
+### 5.1 Data flow (as built)
 
 ```
-Mock Custodian API ──┐
-                     ├──► CRE workflow ──► signed report ──► [relayer] ──► Solana program
-NOWNodes (Solana +   │    (cron, compute                    (untrusted       │ verifies signature,
- EVM supply reads) ──┘     ratio and cap)                     payer)          │ nonce, timestamp
-                                                                              ▼
-                                                     mint_gated (minter only) checks cap + freshness
-                                                                              │
-Dashboard ◄── NOWNodes reads / program events ◄───────────────────────────────┘
+Mock Custodian API ──HTTP──┐
+                           ├──► CRE workflow ──► DON-signed report ──► Keystone Forwarder ──► Lantern on_report
+Sepolia mirror ERC-20 ─────┘    (cron, cap)      (SolanaClient)          (verifies DON sigs)        │ forwarder PDA +
+  via NOWNodes (EVMClient)                                                                           │ workflow check,
+                                                                                                     │ cap recomputed
+                    fallback: Ed25519 relayer ──► submit_attestation ────────────────────────────────┤
+                                                                                                     ▼
+                                                              mint_gated (minter only) checks cap + freshness
+                                                                                                     │
+Dashboard ◄── Devnet state/events, Sepolia supply via NOWNodes, live custodian ◄─────────────────────┘
 ```
 
 ### 5.2 Trust model
 
-- **v1:** a single attestor key signs reports. The program verifies that signature onchain, so whoever submits the transaction (relayer, anyone) cannot forge or alter a report. Trust sits in the attestor key, not the relayer.
-- **Who holds the attestor key:** the key CRE signs with (preferred), or, if CRE's signing key cannot be verified on Solana in time, a workflow-held key whose use is shown in CRE evidence. State which one shipped in the README.
+- **As shipped (CRE path):** reports are signed by the CRE oracle network, and Chainlink's Keystone Forwarder verifies those signatures on Solana. Lantern accepts a report only from the forwarder's authority PDA for Lantern, only with the configured forwarder state, and only with the configured workflow owner and name in the metadata. Other workflows using the same forwarder are rejected.
+- **Fallback (relayer path):** a single Ed25519 attestor key, whose signature the program verifies onchain. Whoever submits the transaction can't forge or alter a report.
+- **Both paths:** the program recomputes the cap from the signed inputs, so neither the workflow nor the attestor can sign an inflated cap.
+- **Evidence limits:** the CRE runs are `cre workflow simulate --broadcast`, using Chainlink's simulation forwarder and the simulator's fixed owner `0xaa…aa`. A DON deployment switches `CreConfig` to the live forwarder and the real owner with a single admin transaction.
 - **Mint rights:** only the `minter` key can mint, and only within the cap. The admin can pause but cannot raise the cap.
 - **Safety defaults:** attestations expire, so a stale feed blocks minting (fail closed). Nonces and monotonic timestamps prevent replay. Domain separation prevents a report for one issuer/cluster being reused on another.
 - **Scope:** enforcement is on Solana only; other chains are monitored (see 1, Scope of the guarantee).
@@ -179,9 +201,11 @@ Dashboard ◄── NOWNodes reads / program events ◄────────�
 
 Be ready for the judge question "who is the attestor?" with exactly this answer.
 
-### 5.3 CRE to Solana delivery (open risk)
+### 5.3 CRE to Solana delivery (resolved: native)
 
-CRE tooling is EVM-centric. In hour one, check whether CRE can target Solana directly and which key type CRE reports are signed with.
+*Resolved:* CRE supports native Solana writes. The workflow calls `SolanaClient.writeReport` (with bindings generated from Lantern's Anchor IDL). The oracle network signs with `ecdsa`/`keccak256`, and the **Keystone Forwarder** program verifies those signatures and CPIs into the receiver's `on_report(metadata, report)`. Lantern doesn't need to verify secp256k1 itself. The forwarder hashes the full account list into the signed report, and the metadata layout is `workflow_cid[32] | workflow_name[10] | workflow_owner[20] | report_id[2]`. The relayer path below remains as a fallback.
+
+*Original plan:* CRE tooling is EVM-centric. In hour one, check whether CRE can target Solana directly and which key type CRE reports are signed with.
 
 - **Preferred:** CRE writes the report to Solana natively.
 - **Fallback:** CRE does all orchestration (API call, multichain reads, computation, signing) and hands the signed report to a small relayer that calls `submit_attestation`. Because the program verifies the signature, the relayer is a courier, not a trusted party. State this plainly in the README. Do not overclaim.
@@ -224,14 +248,14 @@ If S8 is cut, steps 1, 2 and 4 still hold (no dilution); only the displayed-bala
 
 | Item | Track | Done |
 |------|-------|------|
-| Public GitHub repo with README (architecture diagram, pre-existing work disclosed, build start time) | Main | ☐ |
+| Public GitHub repo with README (architecture diagram, pre-existing work disclosed, build start time) | Main | ◐ README done; start time and pre-existing work are TODO |
 | Live URL / hosted demo | Main, Solana | ☐ |
 | Slides on Google Drive (.ppt/.keynote) with screen recording embedded | Main | ☐ |
-| Program ID, cluster (Devnet), example transaction links (successful and rejected mint) | Solana | ☐ |
-| NOWNodes endpoint-to-component map in README | NOWNodes | ☐ |
-| CRE workflow source plus CLI simulation or deployment evidence | Chainlink | ☐ |
-| Trust model and "gated vs. monitored" scope stated in README | All | ☐ |
-| Mock custodian disclosed as a mock everywhere | All | ☐ |
+| Program ID, cluster (Devnet), example transaction links (successful and rejected mint) | Solana | ☑ |
+| NOWNodes endpoint-to-component map in README | NOWNodes | ☑ |
+| CRE workflow source plus CLI simulation or deployment evidence | Chainlink | ☑ simulation + broadcast |
+| Trust model and "gated vs. monitored" scope stated in README | All | ☑ |
+| Mock custodian disclosed as a mock everywhere | All | ☑ README, dashboard, API (video pending) |
 
 **Deadline: 7 October 2026, 11:59 PM. No late entries. Submit with buffer.**
 
@@ -258,9 +282,11 @@ Overlapping blocks assume two people in parallel. If solo, run them in order and
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| CRE cannot write to Solana | Weakens Chainlink score | Relayer fallback with onchain signature verification, honest README |
-| CRE signing key can't be verified on Solana in time | Trust shifts to a workflow-held key | Use a workflow-held Ed25519 key, show its use in CRE evidence, disclose in README |
-| NOWNodes lacks needed testnet | Weakens multichain story | Use read-only mainnet token as second-chain data point, labeled |
+| CRE cannot write to Solana | Weakens Chainlink score | *Retired:* native Solana write through the Keystone Forwarder works |
+| CRE signing key can't be verified on Solana in time | Trust shifts to a workflow-held key | *Retired:* the forwarder verifies DON signatures; Lantern checks the forwarder PDA and workflow identity |
+| NOWNodes lacks needed testnet | Weakens multichain story | *Partly:* no Solana Devnet, but Sepolia works, and we deployed our own mirror token there |
+| CRE deploy access not granted | Evidence is simulation only | Simulation plus `--broadcast` transactions (accepted by the track), disclosed in the README; request access with `cre account access` |
+| Public RPC rate limits during demo | Flaky recording | The demo script checks CRE transactions onchain itself and retries on 429; optionally use a dedicated Devnet RPC key |
 | Demo flakiness | Lowers functionality score | Scripted scenario, pre-funded wallets, backup recording |
 | "Chainlink already has Proof of Reserve / Secure Mint" objection | Perceived low originality | Lead with what Secure Mint doesn't do: corporate actions without dilution, one custodian balance against supply summed across chains, enforcement on Solana |
 | "Never" is attacked by judges | Credibility | Staleness window, fail-closed behavior, stated trust model, explicit "gated on Solana, monitored elsewhere" scope |
@@ -278,11 +304,11 @@ Overlapping blocks assume two people in parallel. If solo, run them in order and
 
 ---
 
-## 11. Open questions (resolve in hour one)
+## 11. Open questions (resolved)
 
-1. Can CRE deliver reports to Solana natively, or is the relayer required?
-2. What key type does CRE sign reports with (secp256k1 vs. Ed25519), and can the program verify it with a native signature program?
-3. What is CRE's minimum cron interval, and does local CLI simulation count as evidence?
-4. Which networks (testnet and mainnet) does NOWNodes provide for the second chain?
-5. Is the Token-2022 Scaled UI Amount extension available on Devnet with the PDA as multiplier authority? (If not, ship without S8 and disclose.)
-6. Staleness window for the demo (suggest 2–3 minutes) vs. production (suggest minutes to hours, per issuer policy).
+1. **Can CRE deliver reports to Solana natively?** Yes: `SolanaClient.writeReport` → Keystone Forwarder → `on_report`. The relayer is now only a fallback.
+2. **Signing key type?** The oracle network signs with `ecdsa`/`keccak256`, and the forwarder verifies it onchain. Lantern checks the forwarder PDA and workflow identity instead of verifying secp256k1 itself.
+3. **Cron interval and evidence?** `*/30 * * * * *` (six fields) works in simulation; the checklist accepts simulation evidence, and we added `--broadcast` Devnet transactions.
+4. **NOWNodes networks?** Solana mainnet and testnet (no Devnet), and Ethereum Sepolia. Sepolia is the second chain.
+5. **Scaled UI Amount on Devnet?** Yes: the PDA is the multiplier authority, and the demo split set ×2 onchain.
+6. **Staleness window?** 180 seconds for the demo.
