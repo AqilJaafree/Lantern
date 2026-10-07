@@ -2,8 +2,8 @@
   "schedule": "*/30 * * * * *",
   "custodianUrl": "http://localhost:8787/holdings",
   "evm": {
-    "rpcUrl": "https://eth-sepolia.nownodes.io",
-    "tokenAddress": "",
+    "chainSelectorName": "ethereum-testnet-sepolia",
+    "tokenAddress": "0xb41e1D98421BbD79d6D094e48DE9BFE01393e54C",
     "decimals": 18,
     "sampleSupplyMicro": "2000000"
   },

@@ -1,8 +1,9 @@
 /**
  * Lantern attestation workflow.
  *
- * Every run: read the (mock) custodian's holdings, read mirrored-token supply
- * on the EVM chain through NOWNodes, compute the Solana mint cap, and write a
+ * Every run: read the (mock) custodian's holdings over HTTP, read the mirror
+ * token's totalSupply on Ethereum Sepolia with EVMClient (simulation RPC is
+ * NOWNodes, set in project.yaml), compute the Solana mint cap, and write a
  * DON-signed AttestationReport to the Lantern program's `on_report` through the
  * Keystone Forwarder. The program recomputes the cap from these inputs and
  * rejects any mismatch, so the workflow cannot sign an inflated cap.
@@ -10,12 +11,15 @@
 import {
   ConsensusAggregationByFields,
   CronCapability,
+  EVMClient,
   HTTPClient,
+  LAST_FINALIZED_BLOCK_NUMBER,
   Runner,
   SolanaClient,
   SolanaTxStatus,
-  bytesToBase64,
-  consensusMedianAggregation,
+  bytesToHex,
+  encodeCallMsg,
+  getNetwork,
   handler,
   identical,
   json,
@@ -25,6 +29,7 @@ import {
   type HTTPSendRequester,
   type Runtime,
 } from "@chainlink/cre-sdk";
+import { decodeFunctionResult, encodeFunctionData, parseAbi, zeroAddress, type Address } from "viem";
 import { z } from "zod";
 import { Lantern, type AttestationReport } from "./contracts/solana/ts/generated";
 
@@ -33,10 +38,10 @@ const configSchema = z.object({
   /** MOCK custodian holdings endpoint (custodian/server.ts). */
   custodianUrl: z.string().regex(/^https?:\/\//),
   evm: z.object({
-    /** NOWNodes EVM JSON-RPC endpoint; the API key comes from the NOWNODES_API_KEY secret. */
-    rpcUrl: z.string().regex(/^https?:\/\//),
-    /** Mirrored stock token on the EVM chain. Empty -> use sampleSupplyMicro (labeled sample). */
-    tokenAddress: z.string(),
+    /** CRE chain selector name, e.g. ethereum-testnet-sepolia (RPC comes from project.yaml). */
+    chainSelectorName: z.string(),
+    /** Mirror token (evm/src/MirrorToken.sol). Empty -> use sampleSupplyMicro (labeled sample). */
+    tokenAddress: z.string().regex(/^(0x[0-9a-fA-F]{40})?$/),
     decimals: z.number().int().min(0).max(36),
     sampleSupplyMicro: z.string().regex(/^\d+$/),
   }),
@@ -74,36 +79,31 @@ const fetchHoldings = (sender: HTTPSendRequester, url: string): Holdings => {
   return { microShares, splitNum: h.split_num, splitDen: h.split_den };
 };
 
-// ---------- EVM supply via NOWNodes ----------
+// ---------- EVM supply via EVMClient ----------
 
-const TOTAL_SUPPLY_SELECTOR = "0x18160ddd"; // totalSupply()
+const erc20Abi = parseAbi(["function totalSupply() view returns (uint256)"]);
 
-const fetchEvmSupplyMicro = (
-  sender: HTTPSendRequester,
-  rpcUrl: string,
-  apiKey: string,
-  token: string,
-  decimals: number,
-): bigint => {
-  const payload = {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "eth_call",
-    params: [{ to: token, data: TOTAL_SUPPLY_SELECTOR }, "finalized"],
-  };
-  const res = sender
-    .sendRequest({
-      url: rpcUrl,
-      method: "POST",
-      headers: { "Content-Type": "application/json", "api-key": apiKey },
-      body: bytesToBase64(new TextEncoder().encode(JSON.stringify(payload))),
-      cacheSettings: { store: false },
+/** Raw totalSupply at the last finalized block. */
+const readEvmTotalSupply = (runtime: Runtime<Config>): bigint => {
+  const { chainSelectorName, tokenAddress } = runtime.config.evm;
+  const network = getNetwork({ chainFamily: "evm", chainSelectorName });
+  if (!network) throw new Error(`Unknown selector: ${chainSelectorName}`);
+  const client = new EVMClient(network.chainSelector.selector);
+  const reply = client
+    .callContract(runtime, {
+      call: encodeCallMsg({
+        from: zeroAddress,
+        to: tokenAddress as Address,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: "totalSupply" }),
+      }),
+      blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
     })
     .result();
-  if (!ok(res)) throw new Error(`NOWNodes HTTP ${res.statusCode}`);
-  const body = z.object({ result: z.string().regex(/^0x[0-9a-fA-F]*$/) }).parse(json(res));
-  const raw = BigInt(body.result === "0x" ? "0x0" : body.result);
-  // Normalize to 6 decimals, rounding UP so rounding never creates Solana capacity.
+  return decodeFunctionResult({ abi: erc20Abi, functionName: "totalSupply", data: bytesToHex(reply.data) });
+};
+
+/** Normalize to Solana's 6 decimals, rounding UP so rounding never creates Solana capacity. */
+export const toMicro = (raw: bigint, decimals: number): bigint => {
   if (decimals <= SOLANA_DECIMALS) return raw * 10n ** BigInt(SOLANA_DECIMALS - decimals);
   const scale = 10n ** BigInt(decimals - SOLANA_DECIMALS);
   return (raw + scale - 1n) / scale;
@@ -149,16 +149,8 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
   let otherChainSupply: bigint;
   let evmSource: string;
   if (cfg.evm.tokenAddress) {
-    const apiKey = runtime.getSecret({ id: "NOWNODES_API_KEY" }).result().value;
-    otherChainSupply = http
-      .sendRequest(runtime, fetchEvmSupplyMicro, consensusMedianAggregation<bigint>())(
-        cfg.evm.rpcUrl,
-        apiKey,
-        cfg.evm.tokenAddress,
-        cfg.evm.decimals,
-      )
-      .result();
-    evmSource = `nownodes:${cfg.evm.tokenAddress}`;
+    otherChainSupply = toMicro(readEvmTotalSupply(runtime), cfg.evm.decimals);
+    evmSource = `evm:${cfg.evm.chainSelectorName}:${cfg.evm.tokenAddress}`;
   } else {
     otherChainSupply = BigInt(cfg.evm.sampleSupplyMicro);
     evmSource = "SAMPLE (no EVM token configured)";

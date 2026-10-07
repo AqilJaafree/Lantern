@@ -33,14 +33,18 @@
 # ==========================================================================
 staging-settings:
   rpcs:
-    # EVM supply is read over HTTP via NOWNodes (not EVMClient), so no EVM RPC here.
+    # EVMClient reads the mirror token here; NOWNodes key resolved from cre/.env.
+    - chain-name: ethereum-testnet-sepolia
+      url: https://eth-sepolia.nownodes.io/${CRE_NOWNODES_API_KEY}
     - chain-name: solana-devnet
       url: https://api.devnet.solana.com
 
 # ==========================================================================
 production-settings:
   rpcs:
-    # EVM supply is read over HTTP via NOWNodes (not EVMClient), so no EVM RPC here.
+    # EVMClient reads the mirror token here; NOWNodes key resolved from cre/.env.
+    - chain-name: ethereum-testnet-sepolia
+      url: https://eth-sepolia.nownodes.io/${CRE_NOWNODES_API_KEY}
     - chain-name: solana-devnet
       url: https://api.devnet.solana.com
 
