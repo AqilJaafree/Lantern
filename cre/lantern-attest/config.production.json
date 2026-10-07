@@ -22,6 +22,11 @@
       "name": "sepolia",
       "address": "0xE1e7c742E976c76982cDB1702B62471F84769AB2",
       "chainSelectorName": "ethereum-testnet-sepolia"
+    },
+    {
+      "name": "robinhood",
+      "address": "0x6cc5f175810e61A56508049f0527BC75EB7e77e4",
+      "rpcUrl": "https://rpc.testnet.chain.robinhood.com"
     }
   ]
 }

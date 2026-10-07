@@ -1,5 +1,9 @@
 {
-  "weights": { "solana": 2, "sepolia": 1, "robinhood": 1 },
+  "weights": {
+    "solana": 2,
+    "sepolia": 1,
+    "robinhood": 1
+  },
   "evmAttestor": "0xC06ec14e19bcC9b317586b013F370eb0D4571555",
   "evm": {
     "sepolia": {
@@ -10,7 +14,7 @@
     },
     "robinhood": {
       "chainId": 46630,
-      "gate": null,
+      "gate": "0x6cc5f175810e61A56508049f0527BC75EB7e77e4",
       "rpc": "https://rpc.testnet.chain.robinhood.com",
       "explorer": "https://explorer.testnet.chain.robinhood.com"
     }
