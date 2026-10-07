@@ -6,6 +6,7 @@
  *   POST /topup  {shares}     -> add shares (demo recovery)
  *   POST /split  {num, den}   -> corporate action: shares × num/den, cumulative factor × num/den
  *   POST /reset               -> back to INITIAL_SHARES, split 1/1
+ *   POST /set {shares, num?, den?} -> exact holdings and cumulative split (demo script)
  *
  * Holdings are micro-shares (1 share = 1_000_000) serialized as strings.
  * Run: bun custodian/server.ts   (PORT=8787, INITIAL_SHARES=102, SYMBOL=xAAPL)
@@ -77,6 +78,12 @@ Bun.serve({
           splitDen /= g;
           break;
         }
+        case "/set":
+          microShares = toMicro(b.shares);
+          splitNum = BigInt(Number(b.num ?? 1));
+          splitDen = BigInt(Number(b.den ?? 1));
+          if (splitNum <= 0n || splitDen <= 0n) throw new Error("num and den must be positive");
+          break;
         case "/reset":
           microShares = INITIAL_SHARES * MICRO;
           splitNum = 1n;

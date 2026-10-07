@@ -1,0 +1,63 @@
+{
+  "programId": "CMo46d7niK6id7f8vUR25zQjKr77ykvKoukDeUEKCXuh",
+  "attestedVia": "cre",
+  "recordedAt": "2026-10-07T05:03:31.921Z",
+  "steps": [
+    {
+      "beat": "attest healthy",
+      "expect": "ok",
+      "result": "ok",
+      "signature": "5xtZdpCcu5gzbxEUqYJ6rMHahssKU2wxVSauo289njjgqMpXqFmo8AsNCDeX3F2bnkL9kVqNUhqNr1HgFu5AAGZu",
+      "explorer": "https://explorer.solana.com/tx/5xtZdpCcu5gzbxEUqYJ6rMHahssKU2wxVSauo289njjgqMpXqFmo8AsNCDeX3F2bnkL9kVqNUhqNr1HgFu5AAGZu?cluster=devnet"
+    },
+    {
+      "beat": "mint within backing",
+      "expect": "ok",
+      "result": "ok",
+      "signature": "UCLy9SXynQ4xVcWUFB8DbAt6zE7ttuZnm6updEt2dYRo9aFuTdzsuJnWrG72CgM8W4ydEkyhwse4Qo21nZik83J",
+      "explorer": "https://explorer.solana.com/tx/UCLy9SXynQ4xVcWUFB8DbAt6zE7ttuZnm6updEt2dYRo9aFuTdzsuJnWrG72CgM8W4ydEkyhwse4Qo21nZik83J?cluster=devnet"
+    },
+    {
+      "beat": "attest shortfall",
+      "expect": "ok",
+      "result": "ok",
+      "signature": "2KNXsftAN6akoFtiJahx6F6Vacs6xVj5zTSfVEK4Gfjdzqj3TiTRFZfkU6V3VvSuJKvra3vonJAw36ggeoiVb21v",
+      "explorer": "https://explorer.solana.com/tx/2KNXsftAN6akoFtiJahx6F6Vacs6xVj5zTSfVEK4Gfjdzqj3TiTRFZfkU6V3VvSuJKvra3vonJAw36ggeoiVb21v?cluster=devnet"
+    },
+    {
+      "beat": "mint while unbacked",
+      "expect": "AutoPaused",
+      "result": "AutoPaused",
+      "signature": "2XYhR4FcFTkY7zyQMxjb4G6dDAsxNTTEwWzsUnpU6s9kjEfu3zMDWwoM4TXPAVCGA7cNzaiAcvQaMCvxdhpCEUEr",
+      "explorer": "https://explorer.solana.com/tx/2XYhR4FcFTkY7zyQMxjb4G6dDAsxNTTEwWzsUnpU6s9kjEfu3zMDWwoM4TXPAVCGA7cNzaiAcvQaMCvxdhpCEUEr?cluster=devnet"
+    },
+    {
+      "beat": "attest recovery",
+      "expect": "ok",
+      "result": "ok",
+      "signature": "3y3W92oAnH51XeVHGwkzPEqF8JT8YVzUpLWt3TzGhMTPhrx71eHezXZi5yMhog9dFoJ5N9UDj9EbeQSN9tfUoo1r",
+      "explorer": "https://explorer.solana.com/tx/3y3W92oAnH51XeVHGwkzPEqF8JT8YVzUpLWt3TzGhMTPhrx71eHezXZi5yMhog9dFoJ5N9UDj9EbeQSN9tfUoo1r?cluster=devnet"
+    },
+    {
+      "beat": "mint after recovery",
+      "expect": "ok",
+      "result": "ok",
+      "signature": "3tG68uZZRLq85UAdEn34v1VjRWarxJM491pDiFt2P2wpD8NxhjMpox9RZyeLP58pV895dEvX8GZ4JVNxtxppBJC1",
+      "explorer": "https://explorer.solana.com/tx/3tG68uZZRLq85UAdEn34v1VjRWarxJM491pDiFt2P2wpD8NxhjMpox9RZyeLP58pV895dEvX8GZ4JVNxtxppBJC1?cluster=devnet"
+    },
+    {
+      "beat": "attest split",
+      "expect": "ok",
+      "result": "ok",
+      "signature": "MRfsP3h4gecpN6LnoNGZGjn89xhnBPgcc6BSSrVdkAmMa5SJ8XEkwTpePk1G2cR6X8XDZAd6uHbCfm1wJnQ5rpG",
+      "explorer": "https://explorer.solana.com/tx/MRfsP3h4gecpN6LnoNGZGjn89xhnBPgcc6BSSrVdkAmMa5SJ8XEkwTpePk1G2cR6X8XDZAd6uHbCfm1wJnQ5rpG?cluster=devnet"
+    },
+    {
+      "beat": "mint against split shares",
+      "expect": "ExceedsBacking",
+      "result": "ExceedsBacking",
+      "signature": "4c1woqpm5SdywqmvPFsDeSkeHr6wY5eqqubph7DbUoGAs61cp29drdBVzXg64Ydh3En5a2kZi4iXy9Qd7tDchJm3",
+      "explorer": "https://explorer.solana.com/tx/4c1woqpm5SdywqmvPFsDeSkeHr6wY5eqqubph7DbUoGAs61cp29drdBVzXg64Ydh3En5a2kZi4iXy9Qd7tDchJm3?cluster=devnet"
+    }
+  ]
+}
