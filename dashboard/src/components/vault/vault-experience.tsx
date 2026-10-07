@@ -22,7 +22,7 @@ import { HangingSign, WoodBoard } from "./hanging-sign";
 import { InkPoster } from "./ink-poster";
 import { IntroScene } from "./intro-scene";
 import { webglAvailable } from "./scene";
-import { setMuted, sfx, unlock } from "./sfx";
+import { prime, setMuted, sfx, unlock } from "./sfx";
 import type { ChainRing, VaultEvent, VaultTarget } from "./types";
 
 const VaultScene = dynamic(() => import("./scene"), { ssr: false });
@@ -94,6 +94,8 @@ export function VaultExperience() {
 
   const [started, setStarted] = useState(false);
   const [introGone, setIntroGone] = useState(false);
+  /** HUD waits until the intro has mostly dissolved, so the two never show through each other. */
+  const [hudReady, setHudReady] = useState(false);
   const gl = useSyncExternalStore(noop, glSnapshot, () => null);
   const reduced = useSyncExternalStore(subscribeReduced, reducedSnapshot, () => false);
   const phone = useSyncExternalStore(subscribePhone, phoneSnapshot, () => false);
@@ -201,11 +203,18 @@ export function VaultExperience() {
     [view, s?.mintingEnabled, devGate],
   );
 
+  // Build the audio graph while the intro is showing, so pressing Enter only resumes it.
+  useEffect(() => {
+    const id = setTimeout(prime, 600);
+    return () => clearTimeout(id);
+  }, []);
+
   const enter = useCallback(() => {
     unlock();
     sfx.enter();
     setStarted(true);
-    setTimeout(() => setIntroGone(true), 2600);
+    setTimeout(() => setHudReady(true), 1500);
+    setTimeout(() => setIntroGone(true), 2300);
   }, []);
 
   const run = useCallback(
@@ -337,7 +346,7 @@ export function VaultExperience() {
           {/* Background only: dark silhouette scene; dissolves into the vault on Enter. */}
           <IntroScene leaving={started} />
           <div
-            className={`absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(4,5,10,0.7)_0%,rgba(4,5,10,0.35)_55%,rgba(4,5,10,0.6)_100%)] px-6 text-center transition-opacity duration-1000 ${started ? "pointer-events-none opacity-0" : "opacity-100"}`}
+            className={`absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(4,5,10,0.7)_0%,rgba(4,5,10,0.35)_55%,rgba(4,5,10,0.6)_100%)] px-6 text-center transition-opacity duration-500 ease-out ${started ? "pointer-events-none opacity-0" : "opacity-100"}`}
           >
             <p className="mb-6 font-mono text-[11px] tracking-[0.4em] text-white/50">SOLANA · CHAINLINK CRE · NOWNODES</p>
             <h1 className="lantern-glow font-mono text-5xl font-semibold tracking-[0.35em] text-amber-200 sm:text-7xl">LANTERN</h1>
@@ -361,7 +370,7 @@ export function VaultExperience() {
       )}
 
       {/* ── HUD ───────────────────────────────────────────────── */}
-      <div className={`pointer-events-none absolute inset-0 z-20 transition-opacity duration-700 ${started && hud ? "opacity-100" : "opacity-0"}`} aria-hidden={!started || !hud}>
+      <div className={`pointer-events-none absolute inset-0 z-20 transition-opacity duration-700 ${hudReady && hud ? "opacity-100" : "opacity-0"}`} aria-hidden={!hudReady || !hud}>
         {/* Top bar */}
         <header className="pointer-events-auto absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
           <div className="flex items-center gap-3">
@@ -389,7 +398,7 @@ export function VaultExperience() {
           seal={ratio === null || ratio >= 10_000 ? "足" : "欠"}
           title="BACKING RATIO"
           verse="幣不過株・鎖上為証"
-          shown={started && hud}
+          shown={hudReady && hud}
           label="Backing"
           className="pointer-events-auto absolute left-4 top-[4.25rem] w-[158px] sm:left-5 sm:top-24 sm:w-[300px]"
         >
@@ -426,7 +435,7 @@ export function VaultExperience() {
           kanji="実況"
           seal="記"
           title="LIVE ACTIVITY"
-          shown={started && hud}
+          shown={hudReady && hud}
           delay={0.25}
           label="Activity"
           className="pointer-events-auto absolute bottom-[12.5rem] left-5 hidden w-[340px] md:block [@media(max-height:780px)]:hidden"

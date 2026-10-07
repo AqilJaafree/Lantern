@@ -1,6 +1,7 @@
 /**
- * Procedural sound for the vault (Web Audio, no asset files). Silent until unlock()
- * runs inside a user gesture, as browsers require.
+ * Procedural sound for the vault (Web Audio, no asset files). prime() builds the audio graph
+ * ahead of time in a suspended context; unlock() resumes it inside a user gesture, as
+ * browsers require. (Opening the audio device takes ~90ms, too long to do on the Enter press.)
  */
 
 let ctx: AudioContext | null = null;
@@ -11,11 +12,9 @@ let humDetune: OscillatorNode | null = null;
 let noiseBuf: AudioBuffer | null = null;
 let muted = false;
 
-export function unlock() {
-  if (ctx) {
-    void ctx.resume();
-    return;
-  }
+/** Create the (suspended) context and graph early, off the critical path. Safe to call repeatedly. */
+export function prime() {
+  if (ctx) return;
   const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AC) return;
   ctx = new AC();
@@ -55,7 +54,15 @@ export function unlock() {
   lfo.connect(lfoGain).connect(humFilter.frequency);
   for (const o of [root, humDetune, sub]) o.connect(humFilter);
   for (const o of [root, humDetune, sub, lfo]) o.start();
-  humGain.gain.setTargetAtTime(0.09, ctx.currentTime, 2.5);
+}
+
+/** Call from a user gesture: resume audio and fade the hum in. */
+export function unlock() {
+  prime();
+  if (!ctx || !humGain) return;
+  const wasRunning = ctx.state === "running";
+  void ctx.resume();
+  if (!wasRunning) humGain.gain.setTargetAtTime(0.09, ctx.currentTime, 2.5);
 }
 
 export function setMuted(m: boolean) {
