@@ -1,51 +1,15 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Inbox, PauseCircle, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Inbox, PauseCircle, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { LANTERN, OPEN_MINTER, SEPOLIA, etherscanAddress, explorerAddress, explorerTx } from "@/lib/config";
 import { ago, formatAmount, formatRatio, truncate } from "@/lib/format";
 import type { HistoryItem, LanternState } from "@/lib/types";
+import { usePoll } from "@/lib/use-poll";
 import { DemoControls } from "./demo-controls";
 import { EvmMintConsole } from "./evm-mint-console";
 import { MintConsole } from "./mint-console";
 import { ExtLink, Panel, Skeleton, Stat, buttonClass } from "./ui";
-
-/** Poll an API route; after errors, back off (×2 per failure, up to 60s) so a
- * rate-limited RPC can recover. The first success restores the normal interval. */
-function usePoll<T>(url: string, intervalMs: number) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const failures = useRef(0);
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-      setData(body);
-      setError(null);
-      failures.current = 0;
-    } catch (e) {
-      failures.current += 1;
-      setError(e instanceof Error ? e.message : "Request failed");
-    }
-  }, [url]);
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    let stopped = false;
-    const tick = async () => {
-      await load();
-      if (stopped) return;
-      const delay = failures.current ? Math.min(60_000, intervalMs * 2 ** failures.current) : intervalMs;
-      timer = setTimeout(tick, delay);
-    };
-    tick();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [load, intervalMs]);
-  return { data, error, reload: load };
-}
 
 export function Dashboard() {
   const state = usePoll<LanternState>("/api/state", 10000);
@@ -66,6 +30,9 @@ export function Dashboard() {
           <p className="text-xs text-muted-foreground">Never more tokens than shares. Mints gated onchain by CRE-signed attestations.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/vault" className="inline-flex items-center gap-1 rounded-sm bg-primary/15 px-2 py-1 font-mono text-xs text-primary hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            ENTER THE VAULT <ArrowRight className="h-3 w-3" aria-hidden />
+          </Link>
           {s?.solana.minter === OPEN_MINTER && (
             <span className="rounded-sm bg-info/15 px-2 py-1 font-mono text-xs text-info">OPEN MINTING</span>
           )}
@@ -153,7 +120,7 @@ function BackingPanel({ s }: { s: LanternState | null }) {
           </div>
           <dl className="grid grid-cols-2 gap-3">
             <Stat label="Backed (shares)" value={formatAmount(s.backing.backed)} sub={s.backing.basis} />
-            <Stat label="Tokens outstanding" value={formatAmount(s.backing.total)} sub="Solana + Sepolia" />
+            <Stat label="Tokens outstanding" value={formatAmount(s.backing.total)} sub="All chains (Solana + EVM)" />
           </dl>
         </div>
       )}

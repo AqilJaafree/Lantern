@@ -20,11 +20,14 @@ export function MintConsole({
   minter,
   blockers = [],
   onDone,
+  onResult,
 }: {
   minter?: string;
   /** Why minting would be rejected right now (stale attestation, paused, …). */
   blockers?: string[];
   onDone: () => void;
+  /** Called once a mint lands (ok) or is rejected; not called when the user cancels in the wallet. */
+  onResult?: (result: { ok: boolean; code?: string }) => void;
 }) {
   const { connection } = useConnection();
   const { publicKey, sendTransaction, signTransaction } = useWallet();
@@ -74,6 +77,7 @@ export function MintConsole({
         const body = await res.json();
         if (!res.ok) {
           setStatus({ kind: "failed", code: body.code ?? "SendFailed", message: body.error ?? "Send failed" });
+          onResult?.({ ok: false, code: body.code ?? "SendFailed" });
           return;
         }
         sig = body.signature;
@@ -84,9 +88,11 @@ export function MintConsole({
       const result = await waitForSignature(sig);
       if (!result.failed) {
         setStatus({ kind: "success", sig });
+        onResult?.({ ok: true });
       } else {
         const code = result.code ?? "TransactionFailed";
         setStatus({ kind: "failed", sig, code, message: PROGRAM_ERRORS[code] ?? "The transaction failed onchain." });
+        onResult?.({ ok: false, code });
       }
       onDone();
     } catch (err) {
@@ -94,7 +100,10 @@ export function MintConsole({
       const msg = err instanceof Error ? err.message : String(err);
       // A wallet rejection is a user choice, not an error.
       if (/reject|denied|cancel/i.test(msg)) setStatus({ kind: "idle" });
-      else setStatus({ kind: "failed", code: "SendFailed", message: msg });
+      else {
+        setStatus({ kind: "failed", code: "SendFailed", message: msg });
+        onResult?.({ ok: false, code: "SendFailed" });
+      }
     }
   }
 
