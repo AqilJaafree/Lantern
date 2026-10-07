@@ -258,8 +258,9 @@ function Director({ world, events, targetRef }: { world: World; events: React.Re
           sfx.beam();
           break;
         case "mint-ok": {
-          const solana = ringPoint(0, 0.6, new THREE.Vector3());
-          world.comets.push({ t: 0, from: GATE_POS.clone(), ctrl: new THREE.Vector3(8, 12, -2), to: solana });
+          const ring = Math.min(RINGS.length - 1, Math.max(0, e.ring ?? 0));
+          const to = ringPoint(ring, 0.6, new THREE.Vector3());
+          world.comets.push({ t: 0, from: GATE_POS.clone(), ctrl: new THREE.Vector3(8, 12, -2), to });
           sfx.mint();
           break;
         }

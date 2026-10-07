@@ -2,6 +2,8 @@ export type VaultEventKind = "drain" | "topup" | "split" | "reset" | "attest" | 
 
 export interface VaultEvent {
   kind: VaultEventKind;
+  /** For mint-ok: which orbit ring (chain) the minted token flies into. */
+  ring?: number;
 }
 
 /** One orbit ring of tokens: a chain where the token circulates. */

@@ -11,11 +11,12 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { LANTERN, explorerTx } from "@/lib/config";
+import { EVM_GATES, LANTERN, explorerTx } from "@/lib/config";
 import { formatAmount, formatRatio, truncate } from "@/lib/format";
 import type { HistoryItem, LanternState } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { DemoControls } from "../demo-controls";
+import { EvmMintConsole } from "../evm-mint-console";
 import { MintConsole } from "../mint-console";
 import { LACQUER, Stick } from "./fortune-sticks";
 import { HangingSign, WoodBoard } from "./hanging-sign";
@@ -42,7 +43,7 @@ const INK: Record<FeedItem["tone"], string> = {
 };
 
 
-type StickName = Action | "attest" | "mint";
+type StickName = Action | "attest" | "mint" | "history";
 type Toast = { id: number; tone: FeedItem["tone"]; text: string; kanji: string; title: string; open: boolean };
 
 /** Default sign lettering per tone. */
@@ -107,8 +108,11 @@ export function VaultExperience() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [attestOpen, setAttestOpen] = useState(false);
   const [mintOpen, setMintOpen] = useState(false);
+  /** Which chain the mint sign targets: "solana" or an EVM gate name. */
+  const [mintChain, setMintChain] = useState<string>("solana");
+  const [historyOpen, setHistoryOpen] = useState(false);
   /** Per-stick counter; each bump replays that stick's pop animation. */
-  const [pulse, setPulse] = useState<Record<StickName, number>>({ drain: 0, topup: 0, split: 0, reset: 0, attest: 0, mint: 0 });
+  const [pulse, setPulse] = useState<Record<StickName, number>>({ drain: 0, topup: 0, split: 0, reset: 0, attest: 0, mint: 0, history: 0 });
   const [copied, setCopied] = useState(false);
   /** Custodian holdings from the last action response, used until a newer poll arrives. */
   const [pendingOverride, setOverride] = useState<{ micro: string; num: number; den: number; at: number } | null>(null);
@@ -249,36 +253,41 @@ export function VaultExperience() {
     [busy, shares, push, say, state],
   );
 
+  const mintLabel = mintChain === "solana" ? "Solana" : (EVM_GATES.find((g) => g.name === mintChain)?.label ?? mintChain);
   const onMint = useCallback(
     (r: { ok: boolean; code?: string }) => {
-      events.current.push({ kind: r.ok ? "mint-ok" : "mint-fail" });
+      const ring = Math.max(0, view?.chains.findIndex((c) => c.key === mintChain) ?? 0);
+      events.current.push({ kind: r.ok ? "mint-ok" : "mint-fail", ring });
       if (r.ok) {
-        push("gold", `Minted ${LANTERN.symbol} within attested backing`);
-        say("gold", `Minted ${LANTERN.symbol} within attested backing.`, "鋳造", "MINTED");
+        push("gold", `Minted ${LANTERN.symbol} on ${mintLabel} within attested backing`);
+        say("gold", `Minted ${LANTERN.symbol} on ${mintLabel} within attested backing.`, "鋳造", "MINTED");
       } else {
-        push("red", `Mint rejected onchain · ${r.code}`);
-        say("red", `The program rejected the mint: ${r.code}.`, "拒否", "REJECTED ONCHAIN");
+        push("red", `Mint rejected on ${mintLabel} · ${r.code}`);
+        say("red", `${mintLabel} rejected the mint: ${r.code}.`, "拒否", "REJECTED ONCHAIN");
       }
       state.reload();
       history.reload();
     },
-    [push, say, state, history],
+    [push, say, state, history, view, mintChain, mintLabel],
   );
 
   /** A stick was clicked or its key pressed: pop it, then act. */
   const press = useCallback(
     (name: StickName) => {
-      const action = name !== "attest" && name !== "mint";
+      const action = name !== "attest" && name !== "mint" && name !== "history";
       if (action && busy) return;
       setPulse((p) => ({ ...p, [name]: p[name] + 1 }));
       if (name === "attest") setAttestOpen((o) => !o);
       else if (name === "mint") setMintOpen((o) => !o);
-      else run(name);
+      else if (name === "history") {
+        setHistoryOpen((o) => !o);
+        history.reload();
+      } else run(name);
     },
-    [busy, run],
+    [busy, run, history],
   );
 
-  // Keyboard: D drain · T top up · S split · R reset · A attest · M mint · H hide HUD.
+  // Keyboard: D drain · T top up · S split · R reset · A attest · M mint · L history · H hide HUD.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -287,12 +296,13 @@ export function VaultExperience() {
         return;
       }
       const k = e.key.toLowerCase();
-      const keyed: Record<string, StickName> = { d: "drain", t: "topup", s: "split", r: "reset", a: "attest", m: "mint" };
+      const keyed: Record<string, StickName> = { d: "drain", t: "topup", s: "split", r: "reset", a: "attest", m: "mint", l: "history" };
       if (keyed[k]) press(keyed[k]);
       else if (k === "h") setHud((h) => !h);
       else if (k === "escape") {
         setAttestOpen(false);
         setMintOpen(false);
+        setHistoryOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -320,6 +330,10 @@ export function VaultExperience() {
       say("red", "Couldn't copy. Select the command and copy it manually.");
     }
   };
+
+  const mintChains = [{ key: "solana", short: "SOLANA" }, ...EVM_GATES.filter((g) => g.gate).map((g) => ({ key: g.name, short: g.name === "robinhood" ? "ROBINHOOD" : "SEPOLIA" }))];
+  const liveGate = s?.gates.find((g) => g.name === mintChain);
+  const mintOpenOn = !s ? true : mintChain === "solana" ? s.mintingEnabled : !!liveGate && liveGate.fresh && !liveGate.error;
 
   if (gl === false) {
     return (
@@ -462,7 +476,7 @@ export function VaultExperience() {
 
         {/* Control bar: tea-menu fortune sticks, fanned like sticks in a cup. */}
         <nav className="sticks pointer-events-auto" aria-label="Vault controls">
-          <Stick kanji="株数" label="Shares" note="" color={LACQUER.teal} tilt={-9}>
+          <Stick kanji="株数" label="Shares" note="" color={LACQUER.teal} tilt={-10.5}>
             <input
               type="number"
               inputMode="decimal"
@@ -475,12 +489,13 @@ export function VaultExperience() {
               aria-label="Shares"
             />
           </Stick>
-          <Stick kanji="引出" label="Drain" note="Remove shares from custody" hint="D" color={LACQUER.red} tilt={-6} pulse={pulse.drain} busy={busy === "drain"} disabled={!!busy} onClick={() => press("drain")} />
-          <Stick kanji="補充" label="Top up" note="Add shares back" hint="T" color={LACQUER.gold} tilt={-3} pulse={pulse.topup} busy={busy === "topup"} disabled={!!busy} onClick={() => press("topup")} />
-          <Stick kanji="分割" label="Split" note="2-for-1 corporate action" hint="S" color={LACQUER.orange} tilt={0} pulse={pulse.split} busy={busy === "split"} disabled={!!busy} onClick={() => press("split")} />
-          <Stick kanji="復元" label="Reset" note="Back to the starting holdings" hint="R" color={LACQUER.brown} tilt={3} pulse={pulse.reset} busy={busy === "reset"} disabled={!!busy} onClick={() => press("reset")} />
-          <Stick kanji="認証" label="Attest" note="Run CRE, watch the beam land" hint="A" color={LACQUER.indigo} tilt={6} pulse={pulse.attest} active={attestOpen} onClick={() => press("attest")} />
-          <Stick kanji="鋳造" label="Mint" note="mint_gated on Solana Devnet" hint="M" color={LACQUER.crimson} tilt={9} pulse={pulse.mint} active={mintOpen} onClick={() => press("mint")} />
+          <Stick kanji="引出" label="Drain" note="Remove shares from custody" hint="D" color={LACQUER.red} tilt={-7.5} pulse={pulse.drain} busy={busy === "drain"} disabled={!!busy} onClick={() => press("drain")} />
+          <Stick kanji="補充" label="Top up" note="Add shares back" hint="T" color={LACQUER.gold} tilt={-4.5} pulse={pulse.topup} busy={busy === "topup"} disabled={!!busy} onClick={() => press("topup")} />
+          <Stick kanji="分割" label="Split" note="2-for-1 corporate action" hint="S" color={LACQUER.orange} tilt={-1.5} pulse={pulse.split} busy={busy === "split"} disabled={!!busy} onClick={() => press("split")} />
+          <Stick kanji="復元" label="Reset" note="Back to the starting holdings" hint="R" color={LACQUER.brown} tilt={1.5} pulse={pulse.reset} busy={busy === "reset"} disabled={!!busy} onClick={() => press("reset")} />
+          <Stick kanji="認証" label="Attest" note="Run CRE, watch the beam land" hint="A" color={LACQUER.indigo} tilt={4.5} pulse={pulse.attest} active={attestOpen} onClick={() => press("attest")} />
+          <Stick kanji="鋳造" label="Mint" note="Solana, Sepolia or Robinhood" hint="M" color={LACQUER.crimson} tilt={7.5} pulse={pulse.mint} active={mintOpen} onClick={() => press("mint")} />
+          <Stick kanji="記録" label="History" note="Every attestation & mint" hint="L" color={LACQUER.olive} tilt={10.5} pulse={pulse.history} active={historyOpen} onClick={() => press("history")} />
         </nav>
 
         {/* Attest panel: a wooden board that fades in. 認証 = verification. */}
@@ -521,18 +536,43 @@ export function VaultExperience() {
           <X className="h-4 w-4" aria-hidden />
         </button>
         <div className="text-center">
-          <p className={`brush text-6xl leading-none tracking-[0.12em] ${s && !s.mintingEnabled ? "text-[#8f1d14]" : "text-[#22150a]"}`}>{s && !s.mintingEnabled ? "準備中" : "営業中"}</p>
+          <p className={`brush text-6xl leading-none tracking-[0.12em] ${mintOpenOn ? "text-[#22150a]" : "text-[#8f1d14]"}`}>{mintOpenOn ? "営業中" : "準備中"}</p>
           <p className="mt-2 font-mono text-[10px] tracking-[0.35em] text-[#5b4127]">
-            {s && !s.mintingEnabled ? "MINTING PAUSED" : "MINTING OPEN"} · {LANTERN.symbol}
+            {mintOpenOn ? "MINTING OPEN" : "MINTING PAUSED"} · {mintLabel.toUpperCase()}
           </p>
         </div>
+        {/* Chain tabs: each chain mints only within its own attested allocation. */}
+        <div className="mt-3 flex justify-center gap-1.5" role="tablist" aria-label="Mint on chain">
+          {mintChains.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              role="tab"
+              aria-selected={mintChain === c.key}
+              onClick={() => setMintChain(c.key)}
+              className={`rounded-sm border px-3 py-1.5 font-mono text-[11px] tracking-[0.15em] transition ${mintChain === c.key ? "border-[#22150a] bg-[#22150a] text-[#f3e2c4]" : "border-[#22150a]/35 text-[#3a2612] hover:bg-[#22150a]/10"}`}
+            >
+              {c.short}
+            </button>
+          ))}
+        </div>
         <p className="mt-3 text-center text-xs leading-relaxed text-[#4a3220]">
-          Try it while the gate is sealed: the program rejects the mint onchain and the gate flashes red. Mint while it&apos;s open and the token flies into the Solana ring.
+          Try it while the gate is sealed: the chain rejects the mint and the gate flashes red. Mint while it&apos;s open and the token flies into the {mintLabel} ring.
         </p>
-        <div className="wood-ink mt-3 max-h-[calc(100dvh-300px)] overflow-y-auto">
-          {mintOpen && <MintConsole minter={s?.solana.minter} blockers={s?.blockers} onDone={() => state.reload()} onResult={onMint} />}
+        <div className="wood-ink mt-3 max-h-[calc(100dvh-340px)] overflow-y-auto">
+          {mintOpen &&
+            (mintChain === "solana" ? (
+              <MintConsole minter={s?.solana.minter} blockers={s?.blockers} onDone={() => state.reload()} onResult={onMint} />
+            ) : (
+              <EvmMintConsole key={mintChain} chain={mintChain} gates={s?.gates} onDone={() => state.reload()} onResult={onMint} />
+            ))}
         </div>
       </HangingSign>
+
+      {/* History: a dark scroll with every attestation and mint the program has seen. 記録 = record. */}
+      {historyOpen && (
+        <HistoryScroll items={history.data} error={history.error} onRetry={history.reload} onClose={() => setHistoryOpen(false)} />
+      )}
 
       {/* Notifications: small hanging signs that drop in and swing. */}
       {toast && (
@@ -584,6 +624,81 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt className="ink-serif text-[11px] italic text-[#a8987f]">{label}</dt>
       <dd className="truncate font-mono text-sm tabular-nums text-[#efe4cf]">{value}</dd>
     </div>
+  );
+}
+
+const KIND_INK: Record<HistoryItem["kind"], string> = {
+  attestation: "text-[#9cbcec]",
+  mint: "text-[#e8c77d]",
+  "corporate-action": "text-[#d6aa64]",
+  pause: "text-[#a8987f]",
+  failed: "text-[#ec6a52]",
+};
+const FILTERS: { key: "all" | HistoryItem["kind"]; label: string }[] = [
+  { key: "all", label: "ALL" },
+  { key: "attestation", label: "ATTESTATIONS" },
+  { key: "mint", label: "MINTS" },
+  { key: "failed", label: "REJECTED" },
+];
+
+function HistoryScroll({ items, error, onRetry, onClose }: { items: HistoryItem[] | null; error: string | null; onRetry: () => void; onClose: () => void }) {
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["key"]>("all");
+  const shown = (items ?? []).filter((it) => filter === "all" || it.kind === filter);
+  return (
+    <InkPoster
+      kanji="記録"
+      seal="録"
+      title="ATTESTATION & MINT HISTORY"
+      shown
+      label="History"
+      className="pointer-events-auto absolute left-1/2 top-[8vh] z-30 w-[min(780px,calc(100vw-2rem))] -translate-x-1/2"
+    >
+      <button type="button" onClick={onClose} className="absolute -right-3 -top-3 rounded p-3 text-[#a8987f] hover:text-[#efe4cf]" aria-label="Close history (Esc)">
+        <X className="h-4 w-4" aria-hidden />
+      </button>
+      <div className="mb-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Filter history">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            role="tab"
+            aria-selected={filter === f.key}
+            onClick={() => setFilter(f.key)}
+            className={`rounded-sm border px-2.5 py-1 font-mono text-[10px] tracking-[0.15em] transition ${filter === f.key ? "border-[#d6aa64]/70 bg-[#d6aa64]/15 text-[#f0d9a8]" : "border-[#d6aa64]/20 text-[#a8987f] hover:text-[#efe4cf]"}`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div className="ink-serif max-h-[min(52vh,calc(100dvh-24rem))] overflow-y-auto pb-6 pr-1">
+        {error && !items ? (
+          <p className="text-[13px] text-[#ec6a52]">
+            Couldn&apos;t load history ({error}).{" "}
+            <button type="button" onClick={onRetry} className="underline">Retry</button>
+          </p>
+        ) : !items ? (
+          <p className="text-[13px] italic text-[#a8987f]">Reading Devnet…</p>
+        ) : shown.length === 0 ? (
+          <p className="text-[13px] italic text-[#a8987f]">Nothing here yet.</p>
+        ) : (
+          <ul className="divide-y divide-[#d6aa64]/10">
+            {shown.map((it) => (
+              <li key={it.signature} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 py-2 sm:grid-cols-[150px_110px_1fr_auto]">
+                <span className="font-mono text-[11px] tabular-nums text-[#a8987f]">{it.time ? new Date(it.time * 1000).toLocaleString() : "—"}</span>
+                <span className={`font-mono text-[11px] uppercase tracking-wider ${KIND_INK[it.kind]}`}>{it.kind === "failed" ? "rejected" : it.kind}</span>
+                <span className="col-span-2 text-[13px] leading-snug text-[#efe4cf] sm:col-span-1">
+                  {it.kind === "failed" ? <span className="text-[#ec6a52]">{it.summary} · {it.error}</span> : it.summary}
+                  <span className="ml-1 text-[12px] italic text-[#a8987f]">· {it.path}</span>
+                </span>
+                <a href={explorerTx(it.signature)} target="_blank" rel="noreferrer" className="col-span-2 font-mono text-[11px] text-[#f08a72] underline decoration-[#f08a72]/40 underline-offset-2 sm:col-span-1">
+                  {truncate(it.signature)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </InkPoster>
   );
 }
 

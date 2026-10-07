@@ -48,9 +48,22 @@ function chainFor(g: Gate) {
 }
 
 /** Mint the gated xAAPL on an EVM chain with an injected wallet (MetaMask etc.). */
-export function EvmMintConsole({ gates, onDone }: { gates?: LanternState["gates"]; onDone: () => void }) {
+export function EvmMintConsole({
+  gates,
+  onDone,
+  chain: chainProp,
+  onResult,
+}: {
+  gates?: LanternState["gates"];
+  onDone: () => void;
+  /** Controlled chain (gate name); when set, the chain picker is hidden. */
+  chain?: string;
+  /** Called once a mint lands (ok) or is rejected; not called when the user cancels. */
+  onResult?: (result: { ok: boolean; code?: string }) => void;
+}) {
   const deployed = EVM_GATES.filter((g) => g.gate);
-  const [chain, setChain] = useState<string>(deployed[0]?.name ?? "");
+  const [chainState, setChain] = useState<string>(deployed[0]?.name ?? "");
+  const chain = chainProp ?? chainState;
   const [amount, setAmount] = useState("1");
   const [account, setAccount] = useState<Address | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -106,6 +119,7 @@ export function EvmMintConsole({ gates, onDone }: { gates?: LanternState["gates"
       setStatus({ kind: "busy", text: "Confirming…" });
       const rcpt = await pub.waitForTransactionReceipt({ hash });
       setStatus(rcpt.status === "success" ? { kind: "success", hash, gate: g } : { kind: "failed", code: "Reverted", message: "The transaction reverted.", hash, gate: g });
+      onResult?.(rcpt.status === "success" ? { ok: true } : { ok: false, code: "Reverted" });
       onDone();
     } catch (err) {
       console.error("[lantern] evm mint failed", err);
@@ -114,10 +128,12 @@ export function EvmMintConsole({ gates, onDone }: { gates?: LanternState["gates"
         if (revert instanceof ContractFunctionRevertedError) {
           const name = revert.data?.errorName ?? "Reverted";
           setStatus({ kind: "failed", code: name, message: ERRORS[name] ?? revert.shortMessage });
+          onResult?.({ ok: false, code: name });
           return;
         }
         if (/reject|denied/i.test(err.shortMessage)) return setStatus({ kind: "idle" });
         setStatus({ kind: "failed", code: "Error", message: err.shortMessage });
+        onResult?.({ ok: false, code: "Error" });
         return;
       }
       setStatus({ kind: "failed", code: "Error", message: err instanceof Error ? err.message : String(err) });
@@ -141,7 +157,7 @@ export function EvmMintConsole({ gates, onDone }: { gates?: LanternState["gates"
       ) : (
         <form onSubmit={submit} className="space-y-3">
           <div className="flex flex-wrap items-end gap-2">
-            <div>
+            {!chainProp && <div>
               <label htmlFor="evm-chain" className="mb-1 block text-xs text-muted-foreground">Chain</label>
               <select
                 id="evm-chain"
@@ -151,7 +167,7 @@ export function EvmMintConsole({ gates, onDone }: { gates?: LanternState["gates"
               >
                 {deployed.map((x) => <option key={x.name} value={x.name}>{x.label}</option>)}
               </select>
-            </div>
+            </div>}
             <div className="flex-1">
               <label htmlFor="evm-amount" className="mb-1 block text-xs text-muted-foreground">Amount (xAAPL)</label>
               <input

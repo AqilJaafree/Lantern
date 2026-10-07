@@ -11,6 +11,7 @@ export const LACQUER = {
   brown: "#5e3418",
   indigo: "#29467a",
   crimson: "#b2214a",
+  olive: "#5f6b2a",
 } as const;
 
 /**

@@ -207,7 +207,7 @@ body {
 
 /* ── Fortune / tea-menu sticks (vault control bar) ──────────────────── */
 .sticks {
-  --stick-w: min(104px, calc((100vw - 1rem) / 7.4));
+  --stick-w: min(100px, calc((100vw - 1rem) / 8.4));
   position: absolute;
   bottom: 0;
   left: 50%;
@@ -316,9 +316,9 @@ body {
 }
 .stick-input:focus { background: rgba(255, 248, 232, 0.85); border-bottom-style: solid; }
 
-/* Phones: seven shorter sticks across the full width, a flatter fan, no notes or key tags. */
+/* Phones:  eight shorter sticks across the full width, a flatter fan, no notes or key tags. */
 @media (max-width: 640px) {
-  .sticks { --stick-w: calc((100vw - 44px) / 7); }
+  .sticks { --stick-w: calc((100vw - 44px) / 8); }
   .stick { height: 172px; margin: 0 0 -58px; rotate: calc(var(--tilt, 0deg) * 0.35); }
   .stick-head { height: 50px; gap: 0; }
   .stick-kanji { font-size: 15px; }
